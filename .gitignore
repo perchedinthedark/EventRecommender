@@ -1,0 +1,18 @@
+# Build
+bin/
+obj/
+
+# Database
+app.db
+*.db-shm
+*.db-wal
+
+# User-specific files
+*.user
+*.vs/
+
+# Logs
+*.log
+
+# Config secrets (optional, depends if you use them)
+appsettings.Development.json
