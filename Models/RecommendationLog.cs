@@ -1,16 +1,18 @@
-﻿namespace EventRecommender.Models;
-
-public class RecommendationLog
+﻿namespace EventRecommender.Models
 {
-    public int RecommendationId { get; set; }
+    public class RecommendationLog
+    {
+        public int Id { get; set; }
 
-    public int UserId { get; set; }
-    public User User { get; set; } = default!;
+        // Foreign keys
+        public string UserId { get; set; } = default!;
+        public int EventId { get; set; }
 
-    public int EventId { get; set; }
-    public Event Event { get; set; } = default!;
+        // Navigation
+        public ApplicationUser User { get; set; } = default!;
+        public Event Event { get; set; } = default!;
 
-    public float Score { get; set; } // probability or predicted rating
-    public DateTime DateGenerated { get; set; } = DateTime.UtcNow;
+        public DateTime RecommendedAt { get; set; } = DateTime.UtcNow;
+    }
 }
 

@@ -303,3 +303,11 @@ C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.
 C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\zh-Hans\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.resources.dll
 C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\zh-Hant\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.resources.dll
 C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\runtimes\linux-musl-s390x\native\libe_sqlite3.so
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.AspNetCore.Cryptography.Internal.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.AspNetCore.Cryptography.KeyDerivation.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.AspNetCore.Identity.EntityFrameworkCore.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.AspNetCore.Identity.UI.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.Extensions.FileProviders.Embedded.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.Extensions.Identity.Core.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\bin\Debug\net8.0\Microsoft.Extensions.Identity.Stores.dll
+C:\Users\Korisnik\source\repos\EventRecommender\EventRecommender\obj\Debug\net8.0\EventRecommender.MvcApplicationPartsAssemblyInfo.cs

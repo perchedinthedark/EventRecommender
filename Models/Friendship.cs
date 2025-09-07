@@ -1,13 +1,15 @@
-﻿namespace EventRecommender.Models;
-
-public class Friendship
+﻿namespace EventRecommender.Models
 {
-    // one-way "follow": Follower -> Followed
-    public int FollowerId { get; set; }
-    public User Follower { get; set; } = default!;
+    public class Friendship
+    {
+        public int Id { get; set; }
 
-    public int FollowedId { get; set; }
-    public User Followed { get; set; } = default!;
+        // Foreign keys
+        public string FollowerId { get; set; } = default!; // who follows
+        public string FolloweeId { get; set; } = default!; // who is followed
 
-    public DateTime Since { get; set; } = DateTime.UtcNow;
+        // Navigation
+        public ApplicationUser Follower { get; set; } = default!;
+        public ApplicationUser Followee { get; set; } = default!;
+    }
 }

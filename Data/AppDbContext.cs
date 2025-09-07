@@ -1,17 +1,13 @@
 ﻿using EventRecommender.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Reflection.Emit;
 
 namespace EventRecommender.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<ApplicationUser>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<User> Users => Set<User>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Venue> Venues => Set<Venue>();
@@ -24,11 +20,10 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // User
-        modelBuilder.Entity<User>(b =>
+        // ApplicationUser (extended Identity user)
+        modelBuilder.Entity<ApplicationUser>(b =>
         {
-            b.Property(x => x.Name).HasMaxLength(100).IsRequired();
-            b.Property(x => x.Email).HasMaxLength(256).IsRequired();
+            b.Property(x => x.Location).HasMaxLength(200);
         });
 
         // Category
@@ -74,7 +69,7 @@ public class AppDbContext : DbContext
             b.HasIndex(x => x.DateTime);
         });
 
-        // UserEventInteraction (surrogate key so we can keep history)
+        // UserEventInteraction
         modelBuilder.Entity<UserEventInteraction>(b =>
         {
             b.HasKey(x => x.Id);
@@ -95,23 +90,23 @@ public class AppDbContext : DbContext
         // Friendship (one-way follow)
         modelBuilder.Entity<Friendship>(b =>
         {
-            b.HasKey(x => new { x.FollowerId, x.FollowedId });
+            b.HasKey(x => new { x.FollowerId, x.FolloweeId });
 
             b.HasOne(x => x.Follower)
              .WithMany(u => u.Following)
              .HasForeignKey(x => x.FollowerId)
              .OnDelete(DeleteBehavior.Restrict);
 
-            b.HasOne(x => x.Followed)
+            b.HasOne(x => x.Followee)
              .WithMany(u => u.Followers)
-             .HasForeignKey(x => x.FollowedId)
+             .HasForeignKey(x => x.FolloweeId)
              .OnDelete(DeleteBehavior.Restrict);
         });
 
         // RecommendationLog
         modelBuilder.Entity<RecommendationLog>(b =>
         {
-            b.HasKey(x => x.RecommendationId);
+            b.HasKey(x => x.Id);
 
             b.HasOne(x => x.User)
              .WithMany(u => u.Recommendations)
@@ -123,7 +118,8 @@ public class AppDbContext : DbContext
              .HasForeignKey(x => x.EventId)
              .OnDelete(DeleteBehavior.Cascade);
 
-            b.HasIndex(x => new { x.UserId, x.EventId, x.DateGenerated });
+            b.HasIndex(x => new { x.UserId, x.EventId, x.RecommendedAt });
         });
     }
 }
+

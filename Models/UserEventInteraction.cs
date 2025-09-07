@@ -1,16 +1,19 @@
-﻿namespace EventRecommender.Models;
-
-public class UserEventInteraction
+﻿namespace EventRecommender.Models
 {
-    public int Id { get; set; } // surrogate key so we can store multiple interactions over time
-    public int UserId { get; set; }
-    public User User { get; set; } = default!;
+    public class UserEventInteraction
+    {
+        public int Id { get; set; }
 
-    public int EventId { get; set; }
-    public Event Event { get; set; } = default!;
+        // Foreign keys
+        public string UserId { get; set; } = default!; // Identity uses string keys
+        public int EventId { get; set; }
 
-    public bool IsInterested { get; set; }
-    public bool IsGoing { get; set; }
-    public int? Rating { get; set; } // 1..5 optional
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        // Navigation
+        public ApplicationUser User { get; set; } = default!;
+        public Event Event { get; set; } = default!;
+
+        public string InteractionType { get; set; } = default!; // e.g. "Interested", "Attending"
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
 }
+
