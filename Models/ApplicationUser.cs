@@ -4,10 +4,10 @@ namespace EventRecommender.Models
 {
     public class ApplicationUser : IdentityUser
     {
-        // Custom fields
+        // Custom
         public string? Location { get; set; }
 
-        // Navigation properties
+        // Navs
         public ICollection<UserEventInteraction> Interactions { get; set; } = new List<UserEventInteraction>();
         public ICollection<Friendship> Following { get; set; } = new List<Friendship>();
         public ICollection<Friendship> Followers { get; set; } = new List<Friendship>();

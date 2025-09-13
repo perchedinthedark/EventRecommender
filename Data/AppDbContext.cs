@@ -78,7 +78,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
              .WithMany(u => u.Interactions)
              .HasForeignKey(x => x.UserId)
              .OnDelete(DeleteBehavior.Cascade);
-
+            
             b.HasOne(x => x.Event)
              .WithMany(e => e.Interactions)
              .HasForeignKey(x => x.EventId)
