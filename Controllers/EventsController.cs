@@ -69,6 +69,34 @@ namespace EventRecommender.Controllers
             return View(evt);
         }
 
+
+        // GET: /Events/TrackAndShow/5
+        [HttpGet]
+        public async Task<IActionResult> TrackAndShow(int id)
+        {
+            var userId = _userManager.GetUserId(User);
+            _context.EventClicks.Add(new EventClick { UserId = userId, EventId = id });
+            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Dwell([FromBody] DwellDto dto)
+        {
+            var userId = _userManager.GetUserId(User);
+            _context.EventClicks.Add(new EventClick
+            {
+                UserId = userId,
+                EventId = dto.EventId,
+                DwellMs = dto.DwellMs,
+                ClickedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        public record DwellDto(int EventId, int DwellMs);
+
         // GET: Events/Create
         public IActionResult Create()
         {

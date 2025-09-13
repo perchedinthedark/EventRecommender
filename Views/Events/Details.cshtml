@@ -86,3 +86,13 @@
     <a asp-action="Edit" asp-route-id="@Model?.EventId">Edit</a> |
     <a asp-action="Index">Back to List</a>
 </div>
+
+<script>
+    const start = Date.now();
+    window.addEventListener('beforeunload', () => {
+      const dwell = Date.now() - start;
+      navigator.sendBeacon('/Events/Dwell', new Blob([JSON.stringify({
+        eventId: @Model.EventId, dwellMs: dwell
+      })], { type: 'application/json' }));
+    });
+</script>

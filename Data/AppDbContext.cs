@@ -15,6 +15,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<UserEventInteraction> UserEventInteractions => Set<UserEventInteraction>();
     public DbSet<RecommendationLog> RecommendationLogs => Set<RecommendationLog>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
+    public DbSet<EventClick> EventClicks => Set<EventClick>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,12 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         {
             b.Property(x => x.Name).HasMaxLength(150).IsRequired();
             b.Property(x => x.ContactInfo).HasMaxLength(300);
+        });
+
+        modelBuilder.Entity<EventClick>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.UserId, x.EventId, x.ClickedAt });
         });
 
         // Event
