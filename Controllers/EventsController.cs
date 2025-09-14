@@ -336,5 +336,6 @@ namespace EventRecommender.Controllers
                 .Select(kv => $"{kv.Key}: {string.Join(" | ", kv.Value!.Errors.Select(e => e.ErrorMessage))}");
             return string.Join(" || ", errs);
         }
+
     }
 }

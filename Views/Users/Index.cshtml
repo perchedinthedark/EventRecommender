@@ -1,0 +1,34 @@
+﻿@model IEnumerable<EventRecommender.Controllers.UserRow>
+@{
+    ViewData["Title"] = "People";
+}
+<h2>People</h2>
+
+<table class="table">
+    <thead><tr><th>User</th><th></th></tr></thead>
+    <tbody>
+        @foreach (var u in Model)
+        {
+            <tr>
+                <td>@u.UserName</td>
+                <td>
+                    @if (!u.IsFollowed)
+                    {
+                        <form asp-action="Follow" method="post" class="d-inline">
+                            <input type="hidden" name="followeeId" value="@u.Id" />
+                            <button class="btn btn-sm btn-primary" type="submit">Follow</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <form asp-action="Unfollow" method="post" class="d-inline">
+                            <input type="hidden" name="followeeId" value="@u.Id" />
+                            <button class="btn btn-sm btn-outline-secondary" type="submit">Unfollow</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+<p><a asp-action="Network" class="btn btn-link">My network</a></p>
