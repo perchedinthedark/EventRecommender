@@ -2,6 +2,7 @@ using EventRecommender.Data;
 using EventRecommender.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using EventRecommender.ML;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,10 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.R
 // MVC
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
+
+
+builder.Services.AddSingleton(new RecommenderConfig());
+builder.Services.AddScoped<IRecommenderService, RecommenderService>();
 
 var app = builder.Build();
 
