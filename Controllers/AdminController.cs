@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using EventRecommender.ML;
 using Microsoft.AspNetCore.Authorization;
-using EventRecommender.ML;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using EventRecommender.Services;
 
 namespace EventRecommender.Controllers
 {
@@ -8,7 +10,18 @@ namespace EventRecommender.Controllers
     public class AdminController : Controller
     {
         private readonly IRecommenderService _svc;
-        public AdminController(IRecommenderService svc) => _svc = svc;
+        private readonly DemoDataSeeder _seed;
+
+        public AdminController(IRecommenderService svc, DemoDataSeeder seed)
+        { _svc = svc; _seed = seed; }
+
+        [Authorize]
+        public async Task<IActionResult> Seed()
+        {
+            var (u, e, i) = await _seed.SeedAsync();
+            TempData["Msg"] = $"Seeded demo data. Users={u}, Events={e}, Interactions={i}.";
+            return RedirectToAction("Index", "Home");
+        }
 
         // GET /Admin/Train
         public async Task<IActionResult> Train()
@@ -21,9 +34,9 @@ namespace EventRecommender.Controllers
         // GET /Admin/Demo?topN=5
         public async Task<IActionResult> Demo(int topN = 5)
         {
-            var uid = User?.Identity?.IsAuthenticated == true ? User.Identity!.Name! : null;
-            if (uid == null) return Content("Login first to demo recommendations.");
-            var ids = await _svc.RecommendForUserAsync(uid, topN);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId)) return Content("Login first to demo recommendations.");
+            var ids = await _svc.RecommendForUserAsync(userId, topN);
             return Content("Recommended EventIds: " + string.Join(", ", ids));
         }
     }

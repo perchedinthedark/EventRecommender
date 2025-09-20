@@ -1,8 +1,44 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+﻿@model EventRecommender.Controllers.HomeVm
+@{
+    ViewData["Title"] = "Home";
+}
+@if (ViewBag.Msg != null)
+{
+    <div class="alert alert-success">@ViewBag.Msg</div>
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<h2>Welcome</h2>
+
+@if (User.Identity?.IsAuthenticated == true && Model.Recommended.Any())
+{
+    <h3>Recommended for you</h3>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+        @foreach (var e in Model.Recommended)
+        {
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <a asp-controller="Events" asp-action="TrackAndShow" asp-route-id="@e.EventId">@e.Title</a>
+                        </h5>
+                        <p class="card-text text-muted mb-1">
+                            @e.DateTime.ToString("yyyy-MM-dd HH:mm") · @e.Category?.Name
+                        </p>
+                        <p class="card-text">@e.Description</p>
+                    </div>
+                    <div class="card-footer">
+                        <small class="text-muted">@e.Venue?.Name · @e.Organizer?.Name</small>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p class="text-muted">Login and seed/train to see personalized recommendations.</p>
+    <p>
+        <a class="btn btn-outline-secondary me-2" asp-controller="Admin" asp-action="Seed">Seed demo data</a>
+        <a class="btn btn-primary" asp-controller="Admin" asp-action="Train">Train model</a>
+    </p>
+}

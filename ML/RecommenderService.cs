@@ -1,13 +1,14 @@
-﻿using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using EventRecommender.Data;
+using EventRecommender.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using Microsoft.EntityFrameworkCore;
-using EventRecommender.Data;
-using EventRecommender.Models;
 using Microsoft.ML.Trainers;
+using System;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 
 namespace EventRecommender.ML
 {
@@ -76,41 +77,36 @@ namespace EventRecommender.ML
                 if (rated > 0f) Upsert(i.UserId, i.EventId, rated);
             }
 
-            // Map string ids to keys (uint) for MF
-            var allUsers = prefs.Keys.Select(k => k.Item1).Distinct().ToArray();
+            // Use stable hashing for both training and serving
             var allEvents = await _db.Events.Select(e => e.EventId).Distinct().ToArrayAsync();
 
-            var userToIdx = allUsers.Select((u, i) => (u, (uint)(i + 1))).ToDictionary(x => x.u, x => x.Item2);
-            var eventToIdx = allEvents.Select((e, i) => (e, (uint)(i + 1))).ToDictionary(x => x.e, x => x.Item2);
-
-            var mfRows = prefs
-                .Where(kv => userToIdx.ContainsKey(kv.Key.Item1) && eventToIdx.ContainsKey(kv.Key.Item2))
-                .Select(kv => new MfRow
-                {
-                    UserId = userToIdx[kv.Key.Item1],
-                    EventId = eventToIdx[kv.Key.Item2],
-                    Label = kv.Value
-                }).ToList();
+            // Build MF training rows directly from raw IDs (no hashing needed)
+            var mfRows = prefs.Select(kv => new MfRow
+            {
+                UserId = kv.Key.Item1,   // string userId
+                EventId = kv.Key.Item2,  // int eventId
+                Label = kv.Value
+            }).ToList();
 
             if (mfRows.Count < 20)
                 throw new InvalidOperationException("Not enough interaction data to train. Create some users/events and interact with them first.");
 
             var mfData = _ml.Data.LoadFromEnumerable(mfRows);
 
-            // 2) Stage A: Matrix Factorization (candidate generation)
-            var mfOptions = new MatrixFactorizationTrainer.Options
-            {
-                MatrixColumnIndexColumnName = nameof(MfRow.UserId),   // key/index column
-                MatrixRowIndexColumnName = nameof(MfRow.EventId),  // key/index column
-                LabelColumnName = nameof(MfRow.Label),
-                NumberOfIterations = 50,
-                ApproximationRank = 64,
-                Alpha = 0.01f,
-                Lambda = 0.025f
-            };
-
-            var mfPipeline = _ml.Recommendation().Trainers.MatrixFactorization(mfOptions);
-
+            // Stage A: Map raw IDs -> Key types, then train MF
+            var mfPipeline =
+                _ml.Transforms.Conversion.MapValueToKey(outputColumnName: "UserIdKey", inputColumnName: nameof(MfRow.UserId))
+                  .Append(_ml.Transforms.Conversion.MapValueToKey(outputColumnName: "EventIdKey", inputColumnName: nameof(MfRow.EventId)))
+                  .Append(_ml.Recommendation().Trainers.MatrixFactorization(new MatrixFactorizationTrainer.Options
+                  {
+                      MatrixColumnIndexColumnName = "UserIdKey",  // Key type
+                      MatrixRowIndexColumnName = "EventIdKey", // Key type
+                      LabelColumnName = nameof(MfRow.Label),
+                      NumberOfIterations = 50,
+                      ApproximationRank = 64,
+                      Alpha = 0.01f,
+                      Lambda = 0.025f
+                  }));
 
             var mfModel = mfPipeline.Fit(mfData);
             _ml.Model.Save(mfModel, mfData.Schema, _cfg.MfModelPath);
@@ -124,24 +120,19 @@ namespace EventRecommender.ML
 
             var allEventIds = allEvents.ToHashSet();
 
-            var rankRows = new System.Collections.Generic.List<RankRow>();
+            // ... after MF model is saved ...
 
-            // simple organizer popularity proxy: count of events (could be made better later)
-            var organizerPop = await _db.Events
-                .GroupBy(e => e.OrganizerId)
-                .Select(g => new { g.Key, Cnt = g.Count() })
-                .ToDictionaryAsync(x => x.Key, x => (float)x.Cnt);
+            // byUser: Dictionary<string userId, HashSet<int eventId>> already computed
+            var rankRows = new System.Collections.Generic.List<RankRow>();
 
             foreach (var u in byUser.Keys)
             {
                 var positives = byUser[u].ToList();
                 if (positives.Count == 0) continue;
 
-                // sample some negatives
                 var negPool = allEventIds.Except(positives).ToArray();
                 var negSample = negPool.OrderBy(_ => rnd.Next()).Take(Math.Min(positives.Count * 3, 100)).ToArray();
 
-                // build features
                 void AddRows(int evtId, float label)
                 {
                     var e = _db.Events.AsNoTracking()
@@ -149,24 +140,24 @@ namespace EventRecommender.ML
                         .First(x => x.EventId == evtId);
 
                     var venue = _db.Venues.AsNoTracking().FirstOrDefault(v => v.VenueId == e.VenueId);
-                    var capacity = venue?.Capacity ?? 0;
+                    var capacity = (float)(venue?.Capacity ?? 0);
 
                     var daysAgo = (float)Math.Max(0, (DateTime.UtcNow - e.DateTime.ToUniversalTime()).TotalDays);
-                    var recency = MathF.Exp(-daysAgo / 30f); // 30d half-life-ish
+                    var recency = MathF.Exp(-daysAgo / 30f);
 
                     var hour = (float)e.DateTime.Hour;
                     var dow = (float)((int)e.DateTime.DayOfWeek);
 
-                    organizerPop.TryGetValue(e.OrganizerId, out var orgScore);
+                    var orgScore = (float)_db.Events.Count(x => x.OrganizerId == e.OrganizerId);
 
                     rankRows.Add(new RankRow
                     {
                         Label = label,
-                        GroupId = HashToFloat(u), // group by user
+                        GroupId = u, // <-- raw userId; will map to Key
                         EventRecency = recency,
                         OrganizerScore = orgScore,
                         VenueCapacity = capacity,
-                        CategoryId = e.CategoryId,
+                        CategoryId = (float)e.CategoryId,
                         HourOfDay = hour,
                         DayOfWeek = dow
                     });
@@ -178,26 +169,33 @@ namespace EventRecommender.ML
 
             var rankData = _ml.Data.LoadFromEnumerable(rankRows);
 
-            // 4) Stage B: LightGBM Ranking
-            var features = new[] { nameof(RankRow.EventRecency), nameof(RankRow.OrganizerScore), nameof(RankRow.VenueCapacity),
-                                   nameof(RankRow.CategoryId), nameof(RankRow.HourOfDay), nameof(RankRow.DayOfWeek) };
+            var features = new[]
+            {
+    nameof(RankRow.EventRecency),
+    nameof(RankRow.OrganizerScore),
+    nameof(RankRow.VenueCapacity),
+    nameof(RankRow.CategoryId),
+    nameof(RankRow.HourOfDay),
+    nameof(RankRow.DayOfWeek)
+};
 
             var rankPipeline =
-                _ml.Transforms.Concatenate("Features", features)
-                 .Append(_ml.Ranking.Trainers.FastTree(new Microsoft.ML.Trainers.FastTree.FastTreeRankingTrainer.Options
-                 {
-                     LabelColumnName = nameof(RankRow.Label),
-                     FeatureColumnName = "Features",
-                     RowGroupColumnName = nameof(RankRow.GroupId),
-                     NumberOfTrees = 100,         // ensemble size
-                     NumberOfLeaves = 32,         // depth-ish
-                     MinimumExampleCountPerLeaf = 10,
-                     LearningRate = 0.2
-                 }));
-
+                _ml.Transforms.Conversion.MapValueToKey(outputColumnName: "GroupIdKey", inputColumnName: nameof(RankRow.GroupId))
+                  .Append(_ml.Transforms.Concatenate("Features", features))
+                  .Append(_ml.Ranking.Trainers.FastTree(new Microsoft.ML.Trainers.FastTree.FastTreeRankingTrainer.Options
+                  {
+                      LabelColumnName = nameof(RankRow.Label),
+                      FeatureColumnName = "Features",
+                      RowGroupColumnName = "GroupIdKey",
+                      NumberOfTrees = 100,
+                      NumberOfLeaves = 32,
+                      MinimumExampleCountPerLeaf = 10,
+                      LearningRate = 0.2
+                  }));
 
             var rankModel = rankPipeline.Fit(rankData);
             _ml.Model.Save(rankModel, rankData.Schema, _cfg.RankModelPath);
+
         }
 
         // ---------- RECOMMEND ----------
@@ -210,42 +208,30 @@ namespace EventRecommender.ML
             var mfModel = _ml.Model.Load(_cfg.MfModelPath, out mfSchema);
             var rankModel = _ml.Model.Load(_cfg.RankModelPath, out rankSchema);
 
+            // Create engines on the saved pipelines
             var mfEngine = _ml.Model.CreatePredictionEngine<MfRow, MfScore>(mfModel, ignoreMissingColumns: true);
             var rankEngine = _ml.Model.CreatePredictionEngine<RankRow, RankPrediction>(rankModel, ignoreMissingColumns: true);
 
+            // Candidate events
+            var allEvents = await _db.Events.AsNoTracking().Select(e => e.EventId).ToListAsync();
 
-            var allEvents = await _db.Events
-                .AsNoTracking()
-                .Select(e => e.EventId)
-                .ToListAsync();
-
-            // If user has interactions, encode them; otherwise cold-start fallback: just rank all by features.
-            var userInteractions = await _db.UserEventInteractions
-                .Where(i => i.UserId == userId)
-                .Select(i => i.EventId)
-                .ToListAsync();
-
-            var candidateIds = allEvents;
-
-            // Stage A: score all events with MF and take top K
-            // We need a mapping from string user → uint key. For serving, a quick trick is to hash to a stable uint key-space.
-            // (In production you’d persist the dictionary from training.)
-            uint ukey = StableKey(userId);
-
-            var mfTop = candidateIds
+            // Stage A: MF scores on raw IDs; pipeline handles keying
+            var mfTop = allEvents
                 .Select(eid => new
                 {
                     EventId = eid,
-                    Score = mfEngine.Predict(new MfRow { UserId = ukey, EventId = StableKey(eid), Label = 0f }).Score
+                    Score = mfEngine.Predict(new MfRow { UserId = userId, EventId = eid, Label = 0f }).Score
                 })
                 .OrderByDescending(x => x.Score)
                 .Take(_cfg.CandidatesPerUser)
                 .Select(x => x.EventId)
                 .ToList();
 
-            if (mfTop.Count == 0) mfTop = candidateIds; // cold start fallback
+            if (mfTop.Count == 0) mfTop = allEvents; // cold-start fallback to Stage B-only
 
-            // Stage B: rank candidates with features
+
+            // ... after mfTop computed ...
+
             var ranked = mfTop
                 .Select(eid =>
                 {
@@ -254,7 +240,7 @@ namespace EventRecommender.ML
                         .First(x => x.EventId == eid);
 
                     var venue = _db.Venues.AsNoTracking().FirstOrDefault(v => v.VenueId == e.VenueId);
-                    var capacity = venue?.Capacity ?? 0;
+                    var capacity = (float)(venue?.Capacity ?? 0);
 
                     var daysAgo = (float)Math.Max(0, (DateTime.UtcNow - e.DateTime.ToUniversalTime()).TotalDays);
                     var recency = MathF.Exp(-daysAgo / 30f);
@@ -262,16 +248,16 @@ namespace EventRecommender.ML
                     var hour = (float)e.DateTime.Hour;
                     var dow = (float)((int)e.DateTime.DayOfWeek);
 
-                    var orgScore = _db.Events.Count(x => x.OrganizerId == e.OrganizerId); // quick proxy
+                    var orgScore = (float)_db.Events.Count(x => x.OrganizerId == e.OrganizerId);
 
                     var row = new RankRow
                     {
                         Label = 0f,
-                        GroupId = HashToFloat(userId),
+                        GroupId = userId, // <-- raw userId; pipeline maps to Key
                         EventRecency = recency,
                         OrganizerScore = orgScore,
                         VenueCapacity = capacity,
-                        CategoryId = e.CategoryId,
+                        CategoryId = (float)e.CategoryId,
                         HourOfDay = hour,
                         DayOfWeek = dow
                     };
@@ -283,6 +269,20 @@ namespace EventRecommender.ML
                 .Take(topN)
                 .Select(x => x.eid)
                 .ToArray();
+
+
+            // log topN shown to this user (optional, skip if too chatty)
+            var now = DateTime.UtcNow;
+                foreach (var eid in ranked)
+                 {
+                _db.RecommendationLogs.Add(new RecommendationLog
+                     {
+                    UserId = userId,
+                    EventId = eid,
+                    RecommendedAt = now
+                      });
+                 }
+                await _db.SaveChangesAsync();
 
             return ranked;
         }

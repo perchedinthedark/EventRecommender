@@ -55,22 +55,29 @@
     </dl>
 </div>
 
+@{
+    var st = (EventRecommender.Models.InteractionStatus?)ViewBag.MyStatus;
+}
+
 <form asp-action="MarkInteraction" method="post" class="d-inline">
     <input type="hidden" name="eventId" value="@Model.EventId" />
     <input type="hidden" name="status" value="Interested" />
-    <button type="submit" class="btn btn-outline-primary">Interested</button>
+    <button type="submit" class="btn @(st == InteractionStatus.Interested ? "btn-primary" : "btn-outline-primary")">
+        Interested
+    </button>
 </form>
 
 <form asp-action="MarkInteraction" method="post" class="d-inline ms-2">
     <input type="hidden" name="eventId" value="@Model.EventId" />
     <input type="hidden" name="status" value="Going" />
-    <button type="submit" class="btn btn-primary">Going</button>
+    <button type="submit" class="btn @(st == InteractionStatus.Going ? "btn-primary" : "btn-outline-primary")">
+        Going
+    </button>
 </form>
 
 <!-- optional rating -->
-<form asp-action="MarkInteraction" method="post" class="d-inline ms-2">
+<form asp-action="SetRating" method="post" class="d-inline ms-2">
     <input type="hidden" name="eventId" value="@Model.EventId" />
-    <input type="hidden" name="status" value="@ViewBag.MyStatus" />
     <select name="rating" class="form-select d-inline w-auto">
         <option value="">Rate…</option>
         @for (var i = 1; i <= 5; i++)
