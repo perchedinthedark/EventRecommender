@@ -81,9 +81,14 @@ namespace EventRecommender.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        [Consumes("application/json")]
         public async Task<IActionResult> Dwell([FromBody] DwellDto dto)
         {
-            var userId = _userManager.GetUserId(User);
+            if (dto == null || dto.EventId <= 0) return Ok(); // swallow bad/untyped beacons
+
+            var userId = _userManager.GetUserId(User); // null if anonymous
             _context.EventClicks.Add(new EventClick
             {
                 UserId = userId,
@@ -94,6 +99,7 @@ namespace EventRecommender.Controllers
             await _context.SaveChangesAsync();
             return Ok();
         }
+
 
         public record DwellDto(int EventId, int DwellMs);
 

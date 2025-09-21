@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using EventRecommender.Services;
 
+
 namespace EventRecommender.Controllers
 {
     [Authorize] // keep it behind login for now
@@ -39,5 +40,7 @@ namespace EventRecommender.Controllers
             var ids = await _svc.RecommendForUserAsync(userId, topN);
             return Content("Recommended EventIds: " + string.Join(", ", ids));
         }
+
+
     }
 }

@@ -201,91 +201,98 @@ namespace EventRecommender.ML
         // ---------- RECOMMEND ----------
         public async Task<int[]> RecommendForUserAsync(string userId, int topN = 10)
         {
-            if (!ModelsExist()) return Array.Empty<int>();
+            if (!ModelsExist())
+                return await PopularEventsAsync(topN);
 
-            // Load models
+            var explicitCount = await _db.UserEventInteractions.CountAsync(i => i.UserId == userId);
+            var clickCount = await _db.EventClicks.CountAsync(c => c.UserId == userId);
+            if (explicitCount + clickCount == 0)
+                return await PopularEventsAsync(topN);
+
             DataViewSchema mfSchema, rankSchema;
             var mfModel = _ml.Model.Load(_cfg.MfModelPath, out mfSchema);
             var rankModel = _ml.Model.Load(_cfg.RankModelPath, out rankSchema);
 
-            // Create engines on the saved pipelines
             var mfEngine = _ml.Model.CreatePredictionEngine<MfRow, MfScore>(mfModel, ignoreMissingColumns: true);
             var rankEngine = _ml.Model.CreatePredictionEngine<RankRow, RankPrediction>(rankModel, ignoreMissingColumns: true);
 
-            // Candidate events
-            var allEvents = await _db.Events.AsNoTracking().Select(e => e.EventId).ToListAsync();
+            var allEvents = await _db.Events
+                .AsNoTracking()
+                .Select(e => e.EventId)
+                .ToListAsync();
 
-            // Stage A: MF scores on raw IDs; pipeline handles keying
-            var mfTop = allEvents
-                .Select(eid => new
-                {
-                    EventId = eid,
-                    Score = mfEngine.Predict(new MfRow { UserId = userId, EventId = eid, Label = 0f }).Score
-                })
-                .OrderByDescending(x => x.Score)
+            // Stage A: score all candidates with MF and take top-K
+            var mfCandidates = allEvents
+                .Select(eid => new { EventId = eid, Mf = (double)mfEngine.Predict(new MfRow { UserId = userId, EventId = eid, Label = 0f }).Score })
+                .OrderByDescending(x => x.Mf)
                 .Take(_cfg.CandidatesPerUser)
-                .Select(x => x.EventId)
                 .ToList();
 
-            if (mfTop.Count == 0) mfTop = allEvents; // cold-start fallback to Stage B-only
+            if (mfCandidates.Count == 0)
+                return await PopularEventsAsync(topN);
 
+            // Stage B: get ranker score per candidate
+            var scored = new List<(int eid, double mf, double rk)>();
+            foreach (var c in mfCandidates)
+            {
+                var e = _db.Events.AsNoTracking()
+                    .Select(x => new { x.EventId, x.CategoryId, x.VenueId, x.OrganizerId, x.DateTime })
+                    .First(x => x.EventId == c.EventId);
 
-            // ... after mfTop computed ...
+                var venue = _db.Venues.AsNoTracking().FirstOrDefault(v => v.VenueId == e.VenueId);
+                var capacity = (float)(venue?.Capacity ?? 0);
 
-            var ranked = mfTop
-                .Select(eid =>
+                var daysAgo = (float)Math.Max(0, (DateTime.UtcNow - e.DateTime.ToUniversalTime()).TotalDays);
+                var recency = MathF.Exp(-daysAgo / 30f);
+
+                var hour = (float)e.DateTime.Hour;
+                var dow = (float)((int)e.DateTime.DayOfWeek);
+                var orgScore = (float)_db.Events.Count(x => x.OrganizerId == e.OrganizerId);
+
+                var row = new RankRow
                 {
-                    var e = _db.Events.AsNoTracking()
-                        .Select(x => new { x.EventId, x.CategoryId, x.VenueId, x.OrganizerId, x.DateTime })
-                        .First(x => x.EventId == eid);
+                    Label = 0f,
+                    GroupId = userId,
+                    EventRecency = recency,
+                    OrganizerScore = orgScore,
+                    VenueCapacity = capacity,
+                    CategoryId = (float)e.CategoryId,
+                    HourOfDay = hour,
+                    DayOfWeek = dow
+                };
 
-                    var venue = _db.Venues.AsNoTracking().FirstOrDefault(v => v.VenueId == e.VenueId);
-                    var capacity = (float)(venue?.Capacity ?? 0);
+                var rk = (double)rankEngine.Predict(row).Score;
+                scored.Add((c.EventId, c.Mf, rk));
+            }
 
-                    var daysAgo = (float)Math.Max(0, (DateTime.UtcNow - e.DateTime.ToUniversalTime()).TotalDays);
-                    var recency = MathF.Exp(-daysAgo / 30f);
+            // Normalize and blend (tweak weights if you like)
+            static double Norm(double v, double min, double max) => max > min ? (v - min) / (max - min) : 0.5;
+            var mfMin = scored.Min(s => s.mf); var mfMax = scored.Max(s => s.mf);
+            var rkMin = scored.Min(s => s.rk); var rkMax = scored.Max(s => s.rk);
 
-                    var hour = (float)e.DateTime.Hour;
-                    var dow = (float)((int)e.DateTime.DayOfWeek);
+            const double wMf = 0.65; // MF weight
+            const double wRk = 0.35; // Ranker weight
 
-                    var orgScore = (float)_db.Events.Count(x => x.OrganizerId == e.OrganizerId);
-
-                    var row = new RankRow
-                    {
-                        Label = 0f,
-                        GroupId = userId, // <-- raw userId; pipeline maps to Key
-                        EventRecency = recency,
-                        OrganizerScore = orgScore,
-                        VenueCapacity = capacity,
-                        CategoryId = (float)e.CategoryId,
-                        HourOfDay = hour,
-                        DayOfWeek = dow
-                    };
-
-                    var score = rankEngine.Predict(row).Score;
-                    return (eid, score);
+            var final = scored
+                .Select(s => new {
+                    s.eid,
+                    score = wMf * Norm(s.mf, mfMin, mfMax) + wRk * Norm(s.rk, rkMin, rkMax)
                 })
                 .OrderByDescending(x => x.score)
                 .Take(topN)
                 .Select(x => x.eid)
                 .ToArray();
 
-
-            // log topN shown to this user (optional, skip if too chatty)
+            // Optional: log shown recs
             var now = DateTime.UtcNow;
-                foreach (var eid in ranked)
-                 {
-                _db.RecommendationLogs.Add(new RecommendationLog
-                     {
-                    UserId = userId,
-                    EventId = eid,
-                    RecommendedAt = now
-                      });
-                 }
-                await _db.SaveChangesAsync();
+            foreach (var eid in final)
+                _db.RecommendationLogs.Add(new RecommendationLog { UserId = userId, EventId = eid, RecommendedAt = now });
+            await _db.SaveChangesAsync();
 
-            return ranked;
+            return final;
         }
+
+
 
         // ----- helpers -----
         private static uint StableKey(string s)
@@ -314,5 +321,71 @@ namespace EventRecommender.ML
 
         private static float HashToFloat(string s)
             => BitConverter.Int32BitsToSingle(unchecked((int)Fnv1a32(s)));
+
+        private async Task<int[]> PopularEventsAsync(int topN)
+        {
+            var now = DateTime.UtcNow;
+            var cutoff = now.AddDays(-30);
+
+            // 1) Aggregate popularity signals on the server
+            var clickStats = await _db.EventClicks
+                .AsNoTracking()
+                .Where(c => c.ClickedAt >= cutoff)
+                .GroupBy(c => c.EventId)
+                .Select(g => new
+                {
+                    EventId = g.Key,
+                    Clicks = g.Count(),
+                    // sum as long? to be safe; null coalesce then to 0
+                    DwellTotal = (long?)g.Sum(c => (long?)(c.DwellMs ?? 0))
+                })
+                .ToListAsync();
+
+            // 2) Build a fast lookup for scores
+            var scoreByEvent = clickStats.ToDictionary(
+                x => x.EventId,
+                x => (double)x.Clicks + ((double)(x.DwellTotal ?? 0) / 2000.0)
+            );
+
+            // 3) Pull minimal event info
+            var events = await _db.Events
+                .AsNoTracking()
+                .Select(e => new { e.EventId, e.DateTime })
+                .ToListAsync();
+
+            // 4) Join + order IN MEMORY (avoid EF ORDER BY translation issues)
+            var ids = events
+                .Select(e => new
+                {
+                    e.EventId,
+                    e.DateTime,
+                    Score = scoreByEvent.TryGetValue(e.EventId, out var s) ? s : 0.0
+                })
+                .OrderByDescending(x => x.DateTime >= now) // upcoming first
+                .ThenByDescending(x => x.Score)            // then popularity
+                .ThenBy(x => x.DateTime)                   // then soonest
+                .Take(topN)
+                .Select(x => x.EventId)
+                .ToArray();
+
+            // Fallback: if no events/signals, just upcoming
+            if (ids.Length == 0)
+            {
+                ids = await _db.Events
+                    .AsNoTracking()
+                    .OrderBy(e => e.DateTime)
+                    .Take(topN)
+                    .Select(e => e.EventId)
+                    .ToArrayAsync();
+            }
+
+            return ids;
+        }
+
+
+
+
+
+
     }
 }

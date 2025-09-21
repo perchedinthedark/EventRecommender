@@ -95,11 +95,36 @@
 </div>
 
 <script>
-    const start = Date.now();
-    window.addEventListener('beforeunload', () => {
-      const dwell = Date.now() - start;
-      navigator.sendBeacon('/Events/Dwell', new Blob([JSON.stringify({
-        eventId: @Model.EventId, dwellMs: dwell
-      })], { type: 'application/json' }));
-    });
+    (function () {
+      var start = Date.now();
+      var sent = false;
+
+      function payload() {
+        return JSON.stringify({ eventId: @Model.EventId, dwellMs: Date.now() - start });
+      }
+
+      function sendOnce() {
+        if (sent) return;
+        sent = true;
+
+        var data = new Blob([payload()], { type: "application/json" });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon("/Events/Dwell", data);
+        } else {
+          // Fallback for older browsers
+          fetch("/Events/Dwell", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload(),
+            keepalive: true
+          });
+        }
+      }
+
+      // Most reliable signals for tab close/navigation/background
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") sendOnce();
+      });
+      window.addEventListener("pagehide", sendOnce);
+    })();
 </script>
