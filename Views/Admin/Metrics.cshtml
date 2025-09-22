@@ -1,0 +1,107 @@
+﻿@model EventRecommender.ViewModels.AdminMetricsVm
+@{
+    ViewData["Title"] = "Admin Metrics";
+}
+
+<h2>Admin Metrics</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Users</div>
+                <div class="h3">@Model.Users</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Events</div>
+                <div class="h3">@Model.Events</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Interactions</div>
+                <div class="h3">@Model.Interactions</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Clicks (all-time)</div>
+                <div class="h3">@Model.Clicks</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Models</div>
+                <div>
+                    @if (Model.ModelsExist)
+                    {
+                        <span class="badge bg-success">Available</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Not trained</span>
+                    }
+                </div>
+                <div class="small mt-2">
+                    <div><strong>Last Train (UTC):</strong> @(Model.LastTrainUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</div>
+                    <div><strong>Last Served Rec (UTC):</strong> @(Model.LastServeUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Candidate Pool (Upcoming)</div>
+                <div class="h3">@Model.CandidatePoolUpcoming</div>
+                <div class="small text-muted">Events with DateTime in the future.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="h6 text-muted">Cold-start users</div>
+                <div class="h3">@Model.ColdStartUsers</div>
+                <div class="small text-muted">No interactions and no clicks.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4>Recent Clicks</h4>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>When (UTC)</th>
+            <th>User</th>
+            <th>Event</th>
+            <th>Dwell (ms)</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in Model.RecentClicks)
+        {
+            <tr>
+                <td>@r.WhenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td>@r.UserName</td>
+                <td>@r.EventTitle</td>
+                <td>@(r.DwellMs?.ToString() ?? "—")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+

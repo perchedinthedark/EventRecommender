@@ -20,159 +20,173 @@ namespace EventRecommender.Services
 
         public async Task<(int users, int events_, int interactions)> SeedAsync()
         {
-            // ---------- Users ----------
+            var now = DateTime.UtcNow;
+
+            // Users (idempotent)
             var emails = new[] { "alice@example.com", "bob@example.com", "carol@example.com" };
             foreach (var e in emails)
             {
                 if (await _um.FindByEmailAsync(e) == null)
-                {
-                    var u = new ApplicationUser { UserName = e, Email = e, EmailConfirmed = true };
-                    var res = await _um.CreateAsync(u, "Demo!12345");
-                    if (!res.Succeeded)
-                        throw new InvalidOperationException("Failed to create demo user: " +
-                            string.Join(", ", res.Errors.Select(x => x.Description)));
-                }
+                    await _um.CreateAsync(new ApplicationUser { UserName = e, Email = e, EmailConfirmed = true }, "Demo!12345");
             }
             var alice = (await _um.FindByEmailAsync("alice@example.com"))!;
             var bob = (await _um.FindByEmailAsync("bob@example.com"))!;
             var carol = (await _um.FindByEmailAsync("carol@example.com"))!;
 
-            // ---------- Taxonomy (upsert-ish) ----------
-            async Task<int> EnsureCategoryAsync(string name)
+            // Taxonomy (idempotent)
+            async Task<int> EnsureCategory(string name)
             {
-                var id = await _db.Categories.Where(c => c.Name == name).Select(c => c.CategoryId).FirstOrDefaultAsync();
-                if (id == 0)
-                {
-                    var c = new Category { Name = name };
-                    _db.Categories.Add(c);
-                    await _db.SaveChangesAsync();
-                    id = c.CategoryId;
-                }
-                return id;
+                var c = await _db.Categories.FirstOrDefaultAsync(x => x.Name == name);
+                if (c == null) { c = new Category { Name = name }; _db.Categories.Add(c); await _db.SaveChangesAsync(); }
+                return c.CategoryId;
+            }
+            async Task<int> EnsureVenue(string name, string addr, int cap)
+            {
+                var v = await _db.Venues.FirstOrDefaultAsync(x => x.Name == name);
+                if (v == null) { v = new Venue { Name = name, Address = addr, Capacity = cap }; _db.Venues.Add(v); await _db.SaveChangesAsync(); }
+                return v.VenueId;
+            }
+            async Task<int> EnsureOrganizer(string name, string? contact = null)
+            {
+                var o = await _db.Organizers.FirstOrDefaultAsync(x => x.Name == name);
+                if (o == null) { o = new Organizer { Name = name, ContactInfo = contact }; _db.Organizers.Add(o); await _db.SaveChangesAsync(); }
+                return o.OrganizerId;
             }
 
-            async Task<int> EnsureVenueAsync(string name, string address, int capacity)
+            var catMusic = await EnsureCategory("Music");
+            var catTech = await EnsureCategory("Tech");
+            var catSport = await EnsureCategory("Sports");
+
+            var vHall = await EnsureVenue("City Hall", "Main 1", 800);
+            var vHub = await EnsureVenue("Tech Hub", "Innov 42", 300);
+            var vStad = await EnsureVenue("Stadium A", "Arena 10", 15000);
+            var vCenter = await EnsureVenue("Community Center", "Oak 55", 500);
+            var vPark = await EnsureVenue("Open Air Park", "Riverside", 5000);
+
+            var oLive = await EnsureOrganizer("LiveNation");
+            var oCode = await EnsureOrganizer("CodeWorks");
+            var oAth = await EnsureOrganizer("AthletiCo");
+            var oCity = await EnsureOrganizer("CityCulture");
+            var oGuild = await EnsureOrganizer("DevGuild");
+
+            // Events (idempotent by Title)
+            async Task AddEvent(string title, string desc, int daysFromNow, string loc, int catId, int venueId, int orgId)
             {
-                var id = await _db.Venues.Where(v => v.Name == name).Select(v => v.VenueId).FirstOrDefaultAsync();
-                if (id == 0)
+                if (!await _db.Events.AnyAsync(e => e.Title == title))
                 {
-                    var v = new Venue { Name = name, Address = address, Capacity = capacity };
-                    _db.Venues.Add(v);
-                    await _db.SaveChangesAsync();
-                    id = v.VenueId;
-                }
-                return id;
-            }
-
-            async Task<int> EnsureOrganizerAsync(string name, string? contact = null)
-            {
-                var id = await _db.Organizers.Where(o => o.Name == name).Select(o => o.OrganizerId).FirstOrDefaultAsync();
-                if (id == 0)
-                {
-                    var o = new Organizer { Name = name, ContactInfo = contact };
-                    _db.Organizers.Add(o);
-                    await _db.SaveChangesAsync();
-                    id = o.OrganizerId;
-                }
-                return id;
-            }
-
-            var catMusic = await EnsureCategoryAsync("Music");
-            var catTech = await EnsureCategoryAsync("Tech");
-            var catSport = await EnsureCategoryAsync("Sports");
-
-            var venHall = await EnsureVenueAsync("City Hall", "Main 1", 800);
-            var venHub = await EnsureVenueAsync("Tech Hub", "Innov 42", 300);
-            var venStad = await EnsureVenueAsync("Stadium A", "Arena 10", 15000);
-
-            var orgLive = await EnsureOrganizerAsync("LiveNation");
-            var orgCode = await EnsureOrganizerAsync("CodeWorks");
-            var orgAth = await EnsureOrganizerAsync("AthletiCo");
-
-            // ---------- Events (upsert by Title) ----------
-            var now = DateTime.UtcNow;
-
-            async Task<int> EnsureEventAsync(
-                string title, string desc, int daysFromNow,
-                int categoryId, int venueId, int organizerId, string location = "City")
-            {
-                var evt = await _db.Events.FirstOrDefaultAsync(e => e.Title == title);
-                if (evt == null)
-                {
-                    evt = new Event
+                    _db.Events.Add(new Event
                     {
                         Title = title,
                         Description = desc,
                         DateTime = now.AddDays(daysFromNow),
-                        Location = location,
-                        CategoryId = categoryId,
+                        Location = loc,
+                        CategoryId = catId,
                         VenueId = venueId,
-                        OrganizerId = organizerId
-                    };
-                    _db.Events.Add(evt);
+                        OrganizerId = orgId
+                    });
                     await _db.SaveChangesAsync();
                 }
-                return evt.EventId;
             }
 
-            await EnsureEventAsync("Jazz Night", "Smooth sets", 3, catMusic, venHall, orgLive, "City");
-            await EnsureEventAsync("Rock Fest", "Guitars!", 10, catMusic, venHall, orgLive, "City");
-            await EnsureEventAsync("AI Summit", "Talks+expo", 5, catTech, venHub, orgCode, "Tech");
-            await EnsureEventAsync("Hack Night", "Code jam", 1, catTech, venHub, orgCode, "Tech");
-            await EnsureEventAsync("Derby Match", "Big game", 7, catSport, venStad, orgAth, "Stad");
+            // Existing 5 (ensure present)
+            await AddEvent("Jazz Night", "Smooth sets", +3, "City", catMusic, vHall, oLive);
+            await AddEvent("Rock Fest", "Guitars!", +10, "City", catMusic, vHall, oLive);
+            await AddEvent("AI Summit", "Talks+expo", +5, "Tech", catTech, vHub, oCode);
+            await AddEvent("Hack Night", "Code jam", +1, "Tech", catTech, vHub, oCode);
+            await AddEvent("Derby Match", "Big game", +7, "Stad", catSport, vStad, oAth);
 
-            // ---------- Interactions (lookup by title each time) ----------
-            async Task IntxAsync(ApplicationUser u, string title, InteractionStatus s, int? rating = null)
+            // New (~7 more)
+            await AddEvent("Symphony Gala", "Orchestra evening", +14, "City", catMusic, vHall, oCity);
+            await AddEvent("Indie Jam", "Local bands", +4, "Park", catMusic, vPark, oLive);
+            await AddEvent("Cloud Expo", "Cloud & DevOps", +12, "Tech", catTech, vCenter, oGuild);
+            await AddEvent("AI Workshop", "Hands-on ML", +8, "Tech", catTech, vHub, oCode);
+            await AddEvent("Data Night", "Talks + networking", +2, "Tech", catTech, vCenter, oGuild);
+            await AddEvent("City Run 10K", "Community race", +9, "Park", catSport, vPark, oAth);
+            await AddEvent("Championship Final", "Season climax", +20, "Stad", catSport, vStad, oAth);
+
+            // Refresh cache
+            var events = await _db.Events.AsNoTracking().ToListAsync();
+
+            // Interaction helper (idempotent)
+            void Intx(ApplicationUser u, string title, InteractionStatus s, int? rating = null)
             {
-                var eid = await _db.Events.Where(x => x.Title == title).Select(x => x.EventId).FirstOrDefaultAsync();
-                if (eid == 0) throw new InvalidOperationException($"Seed error: event '{title}' not found.");
-
-                var row = await _db.UserEventInteractions.FirstOrDefaultAsync(x => x.UserId == u.Id && x.EventId == eid);
-                if (row == null)
+                var e = events.FirstOrDefault(x => x.Title == title);
+                if (e == null) return;
+                if (!_db.UserEventInteractions.Any(x => x.UserId == u.Id && x.EventId == e.EventId))
                 {
                     _db.UserEventInteractions.Add(new UserEventInteraction
                     {
                         UserId = u.Id,
-                        EventId = eid,
+                        EventId = e.EventId,
                         Status = s,
                         Rating = rating,
                         Timestamp = DateTime.UtcNow
                     });
                 }
-                else
-                {
-                    row.Status = s;
-                    row.Rating = rating;
-                    row.Timestamp = DateTime.UtcNow;
-                }
             }
 
-            // Core set (~8–10)
-            await IntxAsync(alice, "AI Summit", InteractionStatus.Interested, 5);
-            await IntxAsync(alice, "Hack Night", InteractionStatus.Going, 4);
-            await IntxAsync(alice, "Jazz Night", InteractionStatus.Interested, 3);
+            // Spread ~40+ interactions across users
+            // Alice
+            Intx(alice, "AI Summit", InteractionStatus.Interested, 5);
+            Intx(alice, "Hack Night", InteractionStatus.Going, 4);
+            Intx(alice, "Jazz Night", InteractionStatus.Interested, 3);
+            Intx(alice, "Cloud Expo", InteractionStatus.Interested, 4);
+            Intx(alice, "AI Workshop", InteractionStatus.Going, 5);
+            Intx(alice, "Data Night", InteractionStatus.Interested, 4);
+            Intx(alice, "Indie Jam", InteractionStatus.Interested, 3);
 
-            await IntxAsync(bob, "Rock Fest", InteractionStatus.Going, 5);
-            await IntxAsync(bob, "Jazz Night", InteractionStatus.Interested, 4);
-            await IntxAsync(bob, "Derby Match", InteractionStatus.Interested, 2);
+            // Bob
+            Intx(bob, "Rock Fest", InteractionStatus.Going, 5);
+            Intx(bob, "Jazz Night", InteractionStatus.Interested, 4);
+            Intx(bob, "Derby Match", InteractionStatus.Interested, 2);
+            Intx(bob, "City Run 10K", InteractionStatus.Going, 4);
+            Intx(bob, "Championship Final", InteractionStatus.Interested, 5);
+            Intx(bob, "Indie Jam", InteractionStatus.Going, 4);
+            Intx(bob, "Symphony Gala", InteractionStatus.Interested, 3);
 
-            await IntxAsync(carol, "AI Summit", InteractionStatus.Interested, 5);
-            await IntxAsync(carol, "Derby Match", InteractionStatus.Going, 4);
+            // Carol
+            Intx(carol, "AI Summit", InteractionStatus.Interested, 5);
+            Intx(carol, "Derby Match", InteractionStatus.Going, 4);
+            Intx(carol, "Cloud Expo", InteractionStatus.Interested, 4);
+            Intx(carol, "AI Workshop", InteractionStatus.Interested, 5);
+            Intx(carol, "Data Night", InteractionStatus.Going, 5);
+            Intx(carol, "Symphony Gala", InteractionStatus.Interested, 4);
+            Intx(carol, "Rock Fest", InteractionStatus.Interested, 4);
 
-            // Extra to comfortably exceed MF threshold (aim ≥ 20)
-            await IntxAsync(alice, "Rock Fest", InteractionStatus.Interested, 4);
-            await IntxAsync(alice, "Derby Match", InteractionStatus.Interested, 3);
-
-            await IntxAsync(bob, "AI Summit", InteractionStatus.Interested, 4);
-            await IntxAsync(bob, "Hack Night", InteractionStatus.Interested, 5);
-
-            await IntxAsync(carol, "Jazz Night", InteractionStatus.Interested, 3);
-            await IntxAsync(carol, "Rock Fest", InteractionStatus.Interested, 4);
-            await IntxAsync(carol, "Hack Night", InteractionStatus.Interested, 5);
+            // Some cross-category extras
+            Intx(alice, "City Run 10K", InteractionStatus.Interested, 3);
+            Intx(alice, "Championship Final", InteractionStatus.Interested, 4);
+            Intx(bob, "AI Workshop", InteractionStatus.Interested, 3);
+            Intx(bob, "Data Night", InteractionStatus.Interested, 4);
+            Intx(carol, "Indie Jam", InteractionStatus.Interested, 3);
 
             await _db.SaveChangesAsync();
 
-            return (3, await _db.Events.CountAsync(), await _db.UserEventInteractions.CountAsync());
+            // Seed a few click/dwell logs so metrics/trending have data (idempotent-ish)
+            void Click(ApplicationUser u, string title, int dwellMs, int minutesAgo)
+            {
+                var e = events.FirstOrDefault(x => x.Title == title);
+                if (e == null) return;
+                // add anyway; it's okay if duplicates exist for demo
+                _db.EventClicks.Add(new EventClick
+                {
+                    UserId = u.Id,
+                    EventId = e.EventId,
+                    ClickedAt = DateTime.UtcNow.AddMinutes(-minutesAgo),
+                    DwellMs = dwellMs
+                });
+            }
+
+            Click(alice, "AI Summit", 4200, 5);
+            Click(alice, "AI Workshop", 3600, 12);
+            Click(bob, "Rock Fest", 5200, 8);
+            Click(bob, "Indie Jam", 1800, 3);
+            Click(carol, "Data Night", 2500, 20);
+            Click(carol, "Symphony Gala", 3000, 15);
+
+            await _db.SaveChangesAsync();
+
+            return (await _db.Users.CountAsync(), await _db.Events.CountAsync(), await _db.UserEventInteractions.CountAsync());
         }
     }
 }
