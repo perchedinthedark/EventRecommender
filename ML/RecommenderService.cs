@@ -1,5 +1,6 @@
 ﻿using EventRecommender.Data;
 using EventRecommender.Models;
+using EventRecommender.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -25,14 +26,14 @@ namespace EventRecommender.ML
         private readonly AppDbContext _db;
         private readonly RecommenderConfig _cfg;
         private readonly MLContext _ml;
+        private readonly ITrendingService _trending;
         private const int ENGAGEMENT_WINDOW_DAYS = 30;
         private const int NEG_PER_POS_MULT = 3;
         private const int MAX_NEG_PER_USER = 100;
 
-        public RecommenderService(AppDbContext db, RecommenderConfig cfg)
+        public RecommenderService(AppDbContext db, RecommenderConfig cfg, ITrendingService trending)
         {
-            _db = db;
-            _cfg = cfg;
+            _db = db; _cfg = cfg; _trending = trending;
             _ml = new MLContext(seed: 42);
             Directory.CreateDirectory(_cfg.ModelDir);
         }
@@ -329,6 +330,18 @@ namespace EventRecommender.ML
         // -------------------- SERVE --------------------
         public async Task<int[]> RecommendForUserAsync(string userId, int topN = 10)
         {
+            // Ultra-cold user fallback: few interactions and no social signals → use Trending
+            var myCount = await _db.UserEventInteractions.CountAsync(i => i.UserId == userId);
+            var hasFriends = await _db.Friendships.AnyAsync(f => f.FollowerId == userId);
+            if (myCount < 2 && !hasFriends)
+            {
+                var (overall, byCat) = await _trending.GetTrendingForUserAsync(userId, topN);
+                var catFirst = byCat.Values.SelectMany(x => x).ToList();
+                var blended = catFirst.Concat(overall).Distinct().Take(topN).ToArray();
+                return blended;
+            }
+
+
             if (!ModelsExist()) return Array.Empty<int>();
 
             // Load models

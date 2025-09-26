@@ -19,9 +19,12 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.R
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
+builder.Services.AddMemoryCache();
+
 builder.Services.AddScoped<DemoDataSeeder>();
 builder.Services.AddSingleton(new RecommenderConfig());
 builder.Services.AddScoped<IRecommenderService, RecommenderService>();
+builder.Services.AddScoped<ITrendingService, TrendingService>();
 
 var app = builder.Build();
 
