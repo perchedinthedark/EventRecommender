@@ -3,6 +3,7 @@ using EventRecommender.Models;
 using EventRecommender.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
+using Microsoft.ML.Trainers;
 using Microsoft.ML.Trainers.FastTree;
 using System;
 using System.Collections.Generic;
@@ -23,8 +24,8 @@ namespace EventRecommender.ML
     {
         private readonly AppDbContext _db;
         private readonly RecommenderConfig _cfg;
-        private readonly ITrendingService _trending;
         private readonly MLContext _ml;
+        private readonly ITrendingService _trending;
 
         private const int ENGAGEMENT_WINDOW_DAYS = 30;
         private const int NEG_PER_POS_MULT = 3;
@@ -32,9 +33,7 @@ namespace EventRecommender.ML
 
         public RecommenderService(AppDbContext db, RecommenderConfig cfg, ITrendingService trending)
         {
-            _db = db;
-            _cfg = cfg;
-            _trending = trending;
+            _db = db; _cfg = cfg; _trending = trending;
             _ml = new MLContext(seed: 42);
             Directory.CreateDirectory(_cfg.ModelDir);
         }
@@ -45,10 +44,10 @@ namespace EventRecommender.ML
         // -------------------- TRAIN --------------------
         public async Task TrainAsync()
         {
-            // 0) Pull interaction signals
+            // 0) Pull signals
             var interactionsRaw = await _db.UserEventInteractions
                 .AsNoTracking()
-                .Select(i => new { i.UserId, i.EventId, i.Status, i.Rating })
+                .Select(i => new { i.UserId, i.EventId, i.Status, i.Rating, i.Timestamp })
                 .ToListAsync();
 
             var clicksRaw = await _db.EventClicks
@@ -83,7 +82,7 @@ namespace EventRecommender.ML
             if (prefs.Count < 20)
                 throw new InvalidOperationException("Not enough interaction data to train. Create users/events and interact first.");
 
-            // 1) Stage A: MF training (string IDs; pipeline maps to keys)
+            // 1) Stage A: MF training (keys inside the pipeline)
             var mfRows = prefs.Select(kv => new MfRow
             {
                 UserId = kv.Key.uid,
@@ -93,27 +92,29 @@ namespace EventRecommender.ML
 
             var mfData = _ml.Data.LoadFromEnumerable(mfRows);
 
+            var mfOptions = new MatrixFactorizationTrainer.Options
+            {
+                MatrixColumnIndexColumnName = "UserKey",
+                MatrixRowIndexColumnName = "ItemKey",
+                LabelColumnName = nameof(MfRow.Label),
+                NumberOfIterations = 60,
+                ApproximationRank = 64,
+                Alpha = 0.01f,
+                Lambda = 0.025f
+            };
+
             var mfPipeline =
                 _ml.Transforms.Conversion.MapValueToKey("UserKey", nameof(MfRow.UserId), addKeyValueAnnotationsAsText: true)
                   .Append(_ml.Transforms.Conversion.MapValueToKey("ItemKey", nameof(MfRow.EventId), addKeyValueAnnotationsAsText: true))
-                  .Append(_ml.Recommendation().Trainers.MatrixFactorization(new Microsoft.ML.Trainers.MatrixFactorizationTrainer.Options
-                  {
-                      MatrixColumnIndexColumnName = "UserKey",
-                      MatrixRowIndexColumnName = "ItemKey",
-                      LabelColumnName = nameof(MfRow.Label),
-                      NumberOfIterations = 60,
-                      ApproximationRank = 64,
-                      Alpha = 0.01f,
-                      Lambda = 0.025f
-                  }));
+                  .Append(_ml.Recommendation().Trainers.MatrixFactorization(mfOptions));
 
             var mfModel = mfPipeline.Fit(mfData);
             _ml.Model.Save(mfModel, mfData.Schema, _cfg.MfModelPath);
 
-            // Reuse MF at training-time to compute MFScore feature.
+            // Reuse MF for MFScore feature
             var mfEngine = _ml.Model.CreatePredictionEngine<MfRow, MfScore>(mfModel, ignoreMissingColumns: true);
 
-            // 2) Precompute feature materials for ranking
+            // 2) Feature materials
             var now = DateTime.UtcNow;
             var cutoff = now.AddDays(-ENGAGEMENT_WINDOW_DAYS);
 
@@ -135,21 +136,22 @@ namespace EventRecommender.ML
                 .Select(g => new { Follower = g.Key, Friends = g.Select(x => x.FolloweeId).ToList() })
                 .ToDictionaryAsync(x => x.Follower, x => x.Friends.ToHashSet());
 
-            // All interactions (for social + affinity & totals)
-            var interAll = await _db.UserEventInteractions.AsNoTracking()
-                .Select(i => new { i.UserId, i.EventId, i.Status, i.Rating })
-                .ToListAsync();
+            // interactions for social/affinities
+            var interAll = interactionsRaw; // already pulled
+            var interByEvent = interAll.GroupBy(i => i.EventId).ToDictionary(g => g.Key, g => g.ToList());
 
-            var interByEvent = interAll
-                .GroupBy(i => i.EventId)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            // User -> (CategoryId -> weighted sum)
+            // user -> category weights
             var catWeightByUser = new Dictionary<string, Dictionary<int, float>>();
+            // user -> organizer weights (familiarity)
+            var orgWeightByUser = new Dictionary<string, Dictionary<int, float>>();
+            // user -> hour/dow prefs
+            var hourPrefByUser = new Dictionary<string, float[]>(); // 24
+            var dowPrefByUser = new Dictionary<string, float[]>();  // 7
+
             foreach (var i in interAll)
             {
                 if (!eventById.TryGetValue(i.EventId, out var eBase)) continue;
-                var weight = Math.Max(
+                var w = Math.Max(
                     i.Status switch
                     {
                         InteractionStatus.Interested => _cfg.ScoreInterested,
@@ -158,16 +160,27 @@ namespace EventRecommender.ML
                     },
                     i.Rating.HasValue ? _cfg.ScoreRated(i.Rating.Value) : 0f
                 );
+                if (w <= 0) continue;
 
-                if (weight <= 0) continue;
-
+                // Cat affinity
                 if (!catWeightByUser.TryGetValue(i.UserId, out var catMap))
-                {
-                    catMap = new Dictionary<int, float>();
-                    catWeightByUser[i.UserId] = catMap;
-                }
-                catMap.TryGetValue(eBase.CategoryId, out var cur);
-                catMap[eBase.CategoryId] = cur + weight;
+                { catMap = new Dictionary<int, float>(); catWeightByUser[i.UserId] = catMap; }
+                catMap.TryGetValue(eBase.CategoryId, out var cCur); catMap[eBase.CategoryId] = cCur + w;
+
+                // Organizer prior
+                if (!orgWeightByUser.TryGetValue(i.UserId, out var orgMap))
+                { orgMap = new Dictionary<int, float>(); orgWeightByUser[i.UserId] = orgMap; }
+                orgMap.TryGetValue(eBase.OrganizerId, out var oCur); orgMap[eBase.OrganizerId] = oCur + w;
+
+                // Temporal prefs
+                var hr = eBase.DateTime.Hour;
+                var dw = (int)eBase.DateTime.DayOfWeek;
+                if (!hourPrefByUser.TryGetValue(i.UserId, out var hrArr))
+                { hrArr = new float[24]; hourPrefByUser[i.UserId] = hrArr; }
+                if (!dowPrefByUser.TryGetValue(i.UserId, out var dwArr))
+                { dwArr = new float[7]; dowPrefByUser[i.UserId] = dwArr; }
+                hrArr[hr] += w;
+                dwArr[dw] += w;
             }
 
             // Event engagement window aggregates
@@ -181,11 +194,10 @@ namespace EventRecommender.ML
                     Dwell = g.Sum(x => (double)(x.DwellMs ?? 0)) / 2000.0
                 })
                 .ToListAsync();
-
             var clicks30Cnt = clicks30.ToDictionary(x => x.EventId, x => (float)x.Cnt);
             var clicks30Dwell = clicks30.ToDictionary(x => x.EventId, x => (float)x.Dwell);
 
-            // 3) Build ranking training rows (positive/negative sampling)
+            // 3) Build ranking rows
             var byUserPosEvents = prefs
                 .GroupBy(p => p.Key.uid)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.Key.eid).ToHashSet());
@@ -193,13 +205,13 @@ namespace EventRecommender.ML
             var allEventIds = eventsBasic.Select(e => e.EventId).ToArray();
             var rnd = new Random(123);
 
-            var rankRows = new List<RankRow>();
-
             float RecencyScore(DateTime dtUtc)
             {
                 var daysAgo = (float)Math.Max(0, (now - dtUtc.ToUniversalTime()).TotalDays);
                 return MathF.Exp(-daysAgo / 30f);
             }
+
+            var rankRows = new List<RankRow>();
 
             void AddRowsForUser(string uid, int evtId, float label)
             {
@@ -210,42 +222,64 @@ namespace EventRecommender.ML
 
                 organizerPop.TryGetValue(e.OrganizerId, out var orgScore);
 
-                // social wrt user's friends (ratios)
-                friendsMap.TryGetValue(uid, out var friends);
-                friends ??= new HashSet<string>();
-
-                float frGoingRatio = 0f, frInterestedRatio = 0f, frAvgRating01 = 0f;
-                if (interByEvent.TryGetValue(evtId, out var inters))
+                // Friends & totals (for rates)
+                friendsMap.TryGetValue(uid, out var friends); friends ??= new HashSet<string>();
+                int totalGoing = 0, totalInterested = 0, friendsGoing = 0, friendsInterested = 0;
+                if (interByEvent.TryGetValue(evtId, out var evInters))
                 {
-                    // Totals across all users
-                    var totalGoing = inters.Count(x => x.Status == InteractionStatus.Going);
-                    var totalInterested = inters.Count(x => x.Status == InteractionStatus.Interested);
-
-                    var fInters = inters.Where(x => friends.Contains(x.UserId)).ToList();
-                    var frGoing = fInters.Count(x => x.Status == InteractionStatus.Going);
-                    var frInterested = fInters.Count(x => x.Status == InteractionStatus.Interested);
-
-                    frGoingRatio = totalGoing > 0 ? (float)frGoing / totalGoing : 0f;
-                    frInterestedRatio = totalInterested > 0 ? (float)frInterested / totalInterested : 0f;
-
-                    var ratings = fInters.Where(x => x.Rating.HasValue).Select(x => x.Rating!.Value).ToList();
-                    frAvgRating01 = ratings.Count > 0 ? (float)ratings.Average() / 5f : 0f; // normalize 0..1
+                    foreach (var it in evInters)
+                    {
+                        if (it.Status == InteractionStatus.Going)
+                        {
+                            totalGoing++;
+                            if (friends.Contains(it.UserId)) friendsGoing++;
+                        }
+                        else if (it.Status == InteractionStatus.Interested)
+                        {
+                            totalInterested++;
+                            if (friends.Contains(it.UserId)) friendsInterested++;
+                        }
+                    }
                 }
+                var goingRate = totalGoing > 0 ? (float)friendsGoing / totalGoing : 0f;
+                var interestedRate = totalInterested > 0 ? (float)friendsInterested / totalInterested : 0f;
 
-                // user-category affinity
+                // User-category affinity
                 float uCatAff = 0f;
-                if (catWeightByUser.TryGetValue(uid, out var map))
+                if (catWeightByUser.TryGetValue(uid, out var catMap))
                 {
-                    var total = map.Values.Sum();
-                    if (total > 0 && map.TryGetValue(e.CategoryId, out var catVal))
+                    var total = catMap.Values.Sum();
+                    if (total > 0 && catMap.TryGetValue(e.CategoryId, out var catVal))
                         uCatAff = catVal / total;
                 }
 
-                // 30d engagement
+                // Organizer familiarity for this user
+                float orgPrior = 0f;
+                if (orgWeightByUser.TryGetValue(uid, out var orgMap))
+                {
+                    var oSum = orgMap.Values.Sum();
+                    if (oSum > 0 && orgMap.TryGetValue(e.OrganizerId, out var oVal))
+                        orgPrior = oVal / oSum;
+                }
+
+                // Temporal affinities
+                float hrAff = 0f, dowAff = 0f;
+                if (hourPrefByUser.TryGetValue(uid, out var hrArr))
+                {
+                    var s = hrArr.Sum();
+                    if (s > 0) hrAff = hrArr[e.DateTime.Hour] / s;
+                }
+                if (dowPrefByUser.TryGetValue(uid, out var dwArr))
+                {
+                    var s = dwArr.Sum();
+                    if (s > 0) dowAff = dwArr[(int)e.DateTime.DayOfWeek] / s;
+                }
+
+                // Engagement in window
                 clicks30Cnt.TryGetValue(evtId, out var eCnt30);
                 clicks30Dwell.TryGetValue(evtId, out var eDw30);
 
-                // timing features
+                // Timing
                 var isUpcoming = e.DateTime >= now ? 1f : 0f;
                 var daysTo = (float)(e.DateTime - now).TotalDays;
                 if (daysTo < -7f) daysTo = -7f;
@@ -255,7 +289,7 @@ namespace EventRecommender.ML
                 var hour = (float)e.DateTime.Hour;
                 var dow = (float)((int)e.DateTime.DayOfWeek);
 
-                // MF score as a feature (learned blend)
+                // MF blend
                 var mfScore = mfEngine.Predict(new MfRow { UserId = uid, EventId = evtId.ToString(), Label = 0f }).Score;
 
                 rankRows.Add(new RankRow
@@ -268,10 +302,12 @@ namespace EventRecommender.ML
                     CategoryId = e.CategoryId,
                     HourOfDay = hour,
                     DayOfWeek = dow,
-                    FriendsGoingRatio = frGoingRatio,
-                    FriendsInterestedRatio = frInterestedRatio,
-                    FriendsAvgRating = frAvgRating01,
+                    FriendsGoingRate = goingRate,
+                    FriendsInterestedRate = interestedRate,
                     UserCatAffinity = uCatAff,
+                    UserHourAffinity = hrAff,
+                    UserDowAffinity = dowAff,
+                    OrganizerUserPrior = orgPrior,
                     EventClicks30d = eCnt30,
                     EventDwell30d = eDw30,
                     IsUpcoming = isUpcoming,
@@ -286,14 +322,13 @@ namespace EventRecommender.ML
                 if (positives.Count == 0) continue;
 
                 var negPool = allEventIds.Except(positives).ToArray();
-                var negSample = negPool
-                    .OrderBy(_ => rnd.Next())
-                    .Take(Math.Min(positives.Count * NEG_PER_POS_MULT, MAX_NEG_PER_USER))
-                    .ToArray();
+                var negSample = negPool.OrderBy(_ => rnd.Next()).Take(Math.Min(positives.Count * NEG_PER_POS_MULT, MAX_NEG_PER_USER)).ToArray();
 
                 foreach (var p in positives) AddRowsForUser(uid, p, 1f);
                 foreach (var n in negSample) AddRowsForUser(uid, n, 0f);
             }
+
+            var rankData = _ml.Data.LoadFromEnumerable(rankRows);
 
             var featureCols = new[]
             {
@@ -303,18 +338,23 @@ namespace EventRecommender.ML
                 nameof(RankRow.CategoryId),
                 nameof(RankRow.HourOfDay),
                 nameof(RankRow.DayOfWeek),
-                nameof(RankRow.FriendsGoingRatio),
-                nameof(RankRow.FriendsInterestedRatio),
-                nameof(RankRow.FriendsAvgRating),
+
+                nameof(RankRow.FriendsGoingRate),
+                nameof(RankRow.FriendsInterestedRate),
+
                 nameof(RankRow.UserCatAffinity),
+                nameof(RankRow.UserHourAffinity),
+                nameof(RankRow.UserDowAffinity),
+                nameof(RankRow.OrganizerUserPrior),
+
                 nameof(RankRow.EventClicks30d),
                 nameof(RankRow.EventDwell30d),
+
                 nameof(RankRow.IsUpcoming),
                 nameof(RankRow.DaysToEvent),
+
                 nameof(RankRow.MFScore)
             };
-
-            var rankData = _ml.Data.LoadFromEnumerable(rankRows);
 
             var rankPipeline =
                 _ml.Transforms.Conversion.MapValueToKey("GroupKey", nameof(RankRow.GroupId), addKeyValueAnnotationsAsText: true)
@@ -324,7 +364,7 @@ namespace EventRecommender.ML
                       LabelColumnName = nameof(RankRow.Label),
                       FeatureColumnName = "Features",
                       RowGroupColumnName = "GroupKey",
-                      NumberOfTrees = 120,
+                      NumberOfTrees = 140,
                       NumberOfLeaves = 32,
                       MinimumExampleCountPerLeaf = 10,
                       LearningRate = 0.18
@@ -337,22 +377,22 @@ namespace EventRecommender.ML
         // -------------------- SERVE --------------------
         public async Task<int[]> RecommendForUserAsync(string userId, int topN = 10)
         {
-            // Ultra-cold user fallback: few interactions and no social signals → use Trending
+            // Ultra-cold users → trending fallback
             var myCount = await _db.UserEventInteractions.CountAsync(i => i.UserId == userId);
             var hasFriends = await _db.Friendships.AnyAsync(f => f.FollowerId == userId);
             if (myCount < 2 && !hasFriends)
             {
                 var (overall, byCat) = await _trending.GetTrendingForUserAsync(userId, topN);
-                var catFirst = byCat.Values.SelectMany(x => x).ToList();
-                var blended = catFirst.Concat(overall).Distinct().Take(topN).ToArray();
+                var blended = byCat.Values.SelectMany(x => x).Concat(overall).Distinct().Take(topN).ToArray();
                 return blended;
             }
 
             if (!ModelsExist()) return Array.Empty<int>();
 
             // Load models
-            var mfModel = _ml.Model.Load(_cfg.MfModelPath, out _);
-            var rankModel = _ml.Model.Load(_cfg.RankModelPath, out _);
+            DataViewSchema s1, s2;
+            var mfModel = _ml.Model.Load(_cfg.MfModelPath, out s1);
+            var rankModel = _ml.Model.Load(_cfg.RankModelPath, out s2);
 
             var mfEngine = _ml.Model.CreatePredictionEngine<MfRow, MfScore>(mfModel, ignoreMissingColumns: true);
             var rankEngine = _ml.Model.CreatePredictionEngine<RankRow, RankPrediction>(rankModel, ignoreMissingColumns: true);
@@ -360,7 +400,7 @@ namespace EventRecommender.ML
             var now = DateTime.UtcNow;
             var cutoff = now.AddDays(-ENGAGEMENT_WINDOW_DAYS);
 
-            // Candidate set = all events
+            // Candidates
             var eventsBasic = await _db.Events.AsNoTracking()
                 .Select(e => new { e.EventId, e.CategoryId, e.VenueId, e.OrganizerId, e.DateTime })
                 .ToListAsync();
@@ -372,20 +412,24 @@ namespace EventRecommender.ML
                 .Select(g => new { g.Key, Cnt = g.Count() })
                 .ToDictionaryAsync(x => x.Key, x => (float)x.Cnt);
 
-            // friends of this user
+            // Friends set
             var friends = await _db.Friendships.AsNoTracking()
                 .Where(f => f.FollowerId == userId)
                 .Select(f => f.FolloweeId)
                 .ToListAsync();
             var friendsSet = friends.ToHashSet();
 
-            // interactions of this user (for category affinity)
+            // My interactions (for affinities & organizer prior & temporal prefs)
             var myInters = await _db.UserEventInteractions.AsNoTracking()
                 .Where(i => i.UserId == userId)
                 .Select(i => new { i.EventId, i.Status, i.Rating })
                 .ToListAsync();
 
             var catWeights = new Dictionary<int, float>();
+            var orgWeights = new Dictionary<int, float>();
+            var hrArr = new float[24];
+            var dwArr = new float[7];
+
             foreach (var i in myInters)
             {
                 if (!eventById.TryGetValue(i.EventId, out var e)) continue;
@@ -399,12 +443,18 @@ namespace EventRecommender.ML
                     i.Rating.HasValue ? _cfg.ScoreRated(i.Rating.Value) : 0f
                 );
                 if (w <= 0) continue;
-                catWeights.TryGetValue(e.CategoryId, out var cur);
-                catWeights[e.CategoryId] = cur + w;
-            }
-            var totalCat = catWeights.Values.Sum();
 
-            // recent engagement
+                catWeights.TryGetValue(e.CategoryId, out var c); catWeights[e.CategoryId] = c + w;
+                orgWeights.TryGetValue(e.OrganizerId, out var o); orgWeights[e.OrganizerId] = o + w;
+                hrArr[e.DateTime.Hour] += w;
+                dwArr[(int)e.DateTime.DayOfWeek] += w;
+            }
+            var catSum = catWeights.Values.Sum();
+            var orgSum = orgWeights.Values.Sum();
+            var hrSum = hrArr.Sum();
+            var dwSum = dwArr.Sum();
+
+            // Recent engagement
             var clicks30 = await _db.EventClicks.AsNoTracking()
                 .Where(c => c.ClickedAt >= cutoff)
                 .GroupBy(c => c.EventId)
@@ -418,40 +468,37 @@ namespace EventRecommender.ML
             var clicks30Cnt = clicks30.ToDictionary(x => x.EventId, x => (float)x.Cnt);
             var clicks30Dwell = clicks30.ToDictionary(x => x.EventId, x => (float)x.Dwell);
 
-            // Precompute: totals per event (for ratios)
+            // Social totals for candidate events (to compute rates)
             var candidateIds = eventsBasic.Select(e => e.EventId).ToList();
-
-            var totalsByEvent = await _db.UserEventInteractions.AsNoTracking()
+            var allIntersForCandidates = await _db.UserEventInteractions.AsNoTracking()
                 .Where(i => candidateIds.Contains(i.EventId))
-                .GroupBy(i => i.EventId)
-                .Select(g => new
+                .Select(i => new { i.UserId, i.EventId, i.Status, i.Rating })
+                .ToListAsync();
+
+            var totalsByEvent = new Dictionary<int, (int going, int interested)>();
+            var friendIntersByEvent = new Dictionary<int, List<(InteractionStatus Status, int? Rating)>>();
+            foreach (var i in allIntersForCandidates)
+            {
+                if (!totalsByEvent.TryGetValue(i.EventId, out var t)) t = (0, 0);
+                if (i.Status == InteractionStatus.Going) t.going++;
+                else if (i.Status == InteractionStatus.Interested) t.interested++;
+                totalsByEvent[i.EventId] = t;
+
+                if (friendsSet.Contains(i.UserId))
                 {
-                    EventId = g.Key,
-                    TotalGoing = g.Count(x => x.Status == InteractionStatus.Going),
-                    TotalInterested = g.Count(x => x.Status == InteractionStatus.Interested)
-                })
-                .ToListAsync();
-            var totalsDict = totalsByEvent.ToDictionary(x => x.EventId, x => (x.TotalGoing, x.TotalInterested));
+                    if (!friendIntersByEvent.TryGetValue(i.EventId, out var list))
+                    { list = new List<(InteractionStatus, int?)>(); friendIntersByEvent[i.EventId] = list; }
+                    list.Add((i.Status, i.Rating));
+                }
+            }
 
-            // friends' interactions across candidates
-            var friendInters = await _db.UserEventInteractions.AsNoTracking()
-                .Where(i => candidateIds.Contains(i.EventId) && friendsSet.Contains(i.UserId))
-                .Select(i => new { i.EventId, i.Status, i.Rating })
-                .ToListAsync();
-            var friendIntersByEvent = friendInters.GroupBy(x => x.EventId).ToDictionary(g => g.Key, g => g.ToList());
-
-            // Stage A: MF score → take top candidates
+            // Stage A: MF → top candidate pool
             var mfTop = candidateIds
-                .Select(eid => new
-                {
-                    EventId = eid,
-                    Score = mfEngine.Predict(new MfRow { UserId = userId, EventId = eid.ToString(), Label = 0 }).Score
-                })
+                .Select(eid => new { EventId = eid, Score = mfEngine.Predict(new MfRow { UserId = userId, EventId = eid.ToString(), Label = 0 }).Score })
                 .OrderByDescending(x => x.Score)
                 .Take(_cfg.CandidatesPerUser)
                 .Select(x => x.EventId)
                 .ToList();
-
             if (mfTop.Count == 0) mfTop = candidateIds;
 
             float RecencyScore(DateTime dtUtc)
@@ -460,7 +507,7 @@ namespace EventRecommender.ML
                 return MathF.Exp(-daysAgo / 30f);
             }
 
-            // Stage B: compute features per candidate and rank
+            // Stage B: feature compute + rank
             var ranked = mfTop
                 .Select(eid =>
                 {
@@ -471,32 +518,25 @@ namespace EventRecommender.ML
 
                     organizerPop.TryGetValue(e.OrganizerId, out var orgScore);
 
-                    // social ratios
-                    float frGoingRatio = 0f, frInterestedRatio = 0f, frAvgRating01 = 0f;
-                    if (friendIntersByEvent.TryGetValue(eid, out var fi))
-                    {
-                        var frGoing = fi.Count(x => x.Status == InteractionStatus.Going);
-                        var frInterested = fi.Count(x => x.Status == InteractionStatus.Interested);
-                        var rs = fi.Where(x => x.Rating.HasValue).Select(x => x.Rating!.Value).ToList();
-                        frAvgRating01 = rs.Count > 0 ? (float)rs.Average() / 5f : 0f;
+                    // Social rates
+                    totalsByEvent.TryGetValue(eid, out var totals);
+                    friendIntersByEvent.TryGetValue(eid, out var fints);
+                    int fGoing = fints?.Count(x => x.Status == InteractionStatus.Going) ?? 0;
+                    int fInterested = fints?.Count(x => x.Status == InteractionStatus.Interested) ?? 0;
 
-                        if (totalsDict.TryGetValue(eid, out var totals))
-                        {
-                            frGoingRatio = totals.Item1 > 0 ? (float)frGoing / totals.Item1 : 0f;
-                            frInterestedRatio = totals.Item2 > 0 ? (float)frInterested / totals.Item2 : 0f;
-                        }
-                    }
+                    var goingRate = totals.going > 0 ? (float)fGoing / totals.going : 0f;
+                    var interestedRate = totals.interested > 0 ? (float)fInterested / totals.interested : 0f;
 
-                    // affinity
-                    float uCatAff = 0f;
-                    if (totalCat > 0 && catWeights.TryGetValue(e.CategoryId, out var cat))
-                        uCatAff = cat / totalCat;
+                    // Affinities
+                    float uCatAff = (catSum > 0 && catWeights.TryGetValue(e.CategoryId, out var c)) ? c / catSum : 0f;
+                    float orgPrior = (orgSum > 0 && orgWeights.TryGetValue(e.OrganizerId, out var o)) ? o / orgSum : 0f;
+                    float hrAff = hrSum > 0 ? hrArr[e.DateTime.Hour] / hrSum : 0f;
+                    float dwAff = dwSum > 0 ? dwArr[(int)e.DateTime.DayOfWeek] / dwSum : 0f;
 
-                    // engagement
+                    // Engagement & timing
                     clicks30Cnt.TryGetValue(eid, out var eCnt30);
                     clicks30Dwell.TryGetValue(eid, out var eDw30);
 
-                    // timing
                     var isUpcoming = e.DateTime >= now ? 1f : 0f;
                     var daysTo = (float)(e.DateTime - now).TotalDays;
                     if (daysTo < -7f) daysTo = -7f;
@@ -506,7 +546,6 @@ namespace EventRecommender.ML
                     var hour = (float)e.DateTime.Hour;
                     var dow = (float)((int)e.DateTime.DayOfWeek);
 
-                    // MF as feature
                     var mfScore = mfEngine.Predict(new MfRow { UserId = userId, EventId = eid.ToString(), Label = 0 }).Score;
 
                     var row = new RankRow
@@ -519,10 +558,12 @@ namespace EventRecommender.ML
                         CategoryId = e.CategoryId,
                         HourOfDay = hour,
                         DayOfWeek = dow,
-                        FriendsGoingRatio = frGoingRatio,
-                        FriendsInterestedRatio = frInterestedRatio,
-                        FriendsAvgRating = frAvgRating01,
+                        FriendsGoingRate = goingRate,
+                        FriendsInterestedRate = interestedRate,
                         UserCatAffinity = uCatAff,
+                        UserHourAffinity = hrAff,
+                        UserDowAffinity = dwAff,
+                        OrganizerUserPrior = orgPrior,
                         EventClicks30d = eCnt30,
                         EventDwell30d = eDw30,
                         IsUpcoming = isUpcoming,

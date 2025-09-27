@@ -1,7 +1,8 @@
-﻿namespace EventRecommender.ML
+﻿// File: ML/Schemas.cs
+namespace EventRecommender.ML
 {
-    // ---------------- Stage A (MF) ----------------
-    // Use raw IDs and let the pipeline map them to keys.
+    // ---------- Stage A (MF) ----------
+    // Use raw IDs; pipeline maps them to keys.
     public sealed class MfRow
     {
         public string UserId { get; set; } = default!;
@@ -14,38 +15,42 @@
         public float Score { get; set; }
     }
 
-    // ---------------- Stage B (Ranking) ----------------
-    // GroupId is the user id (string); pipeline will MapValueToKey -> GroupKey.
+    // ---------- Stage B (Ranking) ----------
+    // GroupId is the user id (string) → MapValueToKey at train time.
     public sealed class RankRow
     {
-        public string GroupId { get; set; } = default!; // user id
-        public float Label { get; set; }                // 1 positive, 0 negative
+        public string GroupId { get; set; } = default!;
+        public float Label { get; set; }
 
-        // Core features
-        public float EventRecency { get; set; }   // exp(-daysAgo / 30)
-        public float OrganizerScore { get; set; } // organizer popularity proxy
+        // Existing base features
+        public float EventRecency { get; set; }
+        public float OrganizerScore { get; set; }
         public float VenueCapacity { get; set; }
-        public float CategoryId { get; set; }     // numeric id
+        public float CategoryId { get; set; }
         public float HourOfDay { get; set; }
         public float DayOfWeek { get; set; }
 
-        // Social (ratios among all attendees for the event)
-        public float FriendsGoingRatio { get; set; }      // friendsGoing / totalGoing
-        public float FriendsInterestedRatio { get; set; } // friendsInterested / totalInterested
-        public float FriendsAvgRating { get; set; }       // 0..1 (avg/5)
+        // Social (normalized)
+        public float FriendsGoingRate { get; set; }       // friends going ÷ total going
+        public float FriendsInterestedRate { get; set; }  // friends interested ÷ total interested
 
-        // User affinity
-        public float UserCatAffinity { get; set; }        // user weight for this category / total
+        // User-specific affinities
+        public float UserCatAffinity { get; set; }   // preference for this category
+        public float UserHourAffinity { get; set; }  // preference for this hour-of-day
+        public float UserDowAffinity { get; set; }   // preference for this day-of-week
 
-        // Recent engagement (last 30 days)
+        // Organizer familiarity for this user
+        public float OrganizerUserPrior { get; set; }
+
+        // Recent engagement (popularity)
         public float EventClicks30d { get; set; }
-        public float EventDwell30d { get; set; }          // sum(dwellMs)/2000
+        public float EventDwell30d { get; set; }
 
         // Timing
-        public float IsUpcoming { get; set; }             // 0/1
-        public float DaysToEvent { get; set; }            // clamped [-7, 60]
+        public float IsUpcoming { get; set; }
+        public float DaysToEvent { get; set; }
 
-        // Learned blend (MF score as a feature)
+        // Learned blend from MF score
         public float MFScore { get; set; }
     }
 
@@ -54,5 +59,3 @@
         public float Score { get; set; }
     }
 }
-
-
