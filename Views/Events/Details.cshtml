@@ -1,130 +1,98 @@
+@using EventRecommender.Models
 @model EventRecommender.Models.Event
-
 @{
     ViewData["Title"] = "Details";
+
+    var myStatus = ViewBag.MyStatus as InteractionStatus?;
+    int? myRating = ViewBag.MyRating as int?;
+    bool isInterested = myStatus == InteractionStatus.Interested;
+    bool isGoing = myStatus == InteractionStatus.Going;
 }
 
-<h1>Details</h1>
+<h1>@Model.Title</h1>
+<hr />
 
-<div>
-    <h4>Event</h4>
-    <hr />
-    <dl class="row">
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Title)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Title)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Description)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Description)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.DateTime)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.DateTime)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Location)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Location)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Category)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Category.Name)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Venue)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Venue.Name)
-        </dd>
-        <dt class = "col-sm-2">
-            @Html.DisplayNameFor(model => model.Organizer)
-        </dt>
-        <dd class = "col-sm-10">
-            @Html.DisplayFor(model => model.Organizer.Name)
-        </dd>
-    </dl>
-</div>
+<dl class="row">
+    <dt class="col-sm-2">Description</dt>
+    <dd class="col-sm-10">@Model.Description</dd>
 
-@{
-    var st = (EventRecommender.Models.InteractionStatus?)ViewBag.MyStatus;
+    <dt class="col-sm-2">When</dt>
+    <dd class="col-sm-10">@Model.DateTime</dd>
+
+    <dt class="col-sm-2">Location</dt>
+    <dd class="col-sm-10">@Model.Location</dd>
+
+    <dt class="col-sm-2">Category</dt>
+    <dd class="col-sm-10">@Model.Category?.Name</dd>
+
+    <dt class="col-sm-2">Venue</dt>
+    <dd class="col-sm-10">@Model.Venue?.Name</dd>
+
+    <dt class="col-sm-2">Organizer</dt>
+    <dd class="col-sm-10">@Model.Organizer?.Name</dd>
+</dl>
+
+@if (User.Identity?.IsAuthenticated == true)
+{
+    <div class="mb-3 d-flex align-items-center gap-2">
+
+        <!-- Interested -->
+        <form asp-action="MarkInteraction" asp-controller="Events" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="eventId" value="@Model.EventId" />
+            <input type="hidden" name="status" value="Interested" />
+            <button type="submit"
+                    class="btn @(isInterested ? "btn-primary" : "btn-outline-primary")"
+                    @(isInterested ? "disabled" : null)>
+                Interested
+            </button>
+        </form>
+
+        <!-- Going -->
+        <form asp-action="MarkInteraction" asp-controller="Events" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="eventId" value="@Model.EventId" />
+            <input type="hidden" name="status" value="Going" />
+            <button type="submit"
+                    class="btn @(isGoing ? "btn-success" : "btn-outline-success")"
+                    @(isGoing ? "disabled" : null)>
+                Going
+            </button>
+        </form>
+
+        <!-- Rating -->
+        <form asp-action="SetRating" asp-controller="Events" method="post" class="ms-3 d-flex align-items-center">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="eventId" value="@Model.EventId" />
+            <label class="me-2 mb-0">Rating</label>
+            <select name="rating" class="form-select w-auto">
+                <option value="">—</option>
+                @for (var i = 1; i <= 5; i++)
+                {
+                    <option value="@i" selected="@(myRating == i ? "selected" : null)">@i</option>
+                }
+            </select>
+            <button type="submit" class="btn btn-outline-secondary ms-2">Save</button>
+        </form>
+    </div>
+}
+else
+{
+    <p><a asp-area="Identity" asp-page="/Account/Login">Log in</a> to mark Interested/Going or to rate this event.</p>
 }
 
-<form asp-action="MarkInteraction" method="post" class="d-inline">
-    <input type="hidden" name="eventId" value="@Model.EventId" />
-    <input type="hidden" name="status" value="Interested" />
-    <button type="submit" class="btn @(st == InteractionStatus.Interested ? "btn-primary" : "btn-outline-primary")">
-        Interested
-    </button>
-</form>
-
-<form asp-action="MarkInteraction" method="post" class="d-inline ms-2">
-    <input type="hidden" name="eventId" value="@Model.EventId" />
-    <input type="hidden" name="status" value="Going" />
-    <button type="submit" class="btn @(st == InteractionStatus.Going ? "btn-primary" : "btn-outline-primary")">
-        Going
-    </button>
-</form>
-
-<!-- optional rating -->
-<form asp-action="SetRating" method="post" class="d-inline ms-2">
-    <input type="hidden" name="eventId" value="@Model.EventId" />
-    <select name="rating" class="form-select d-inline w-auto">
-        <option value="">Rate…</option>
-        @for (var i = 1; i <= 5; i++)
-        {
-            <option value="@i">@i</option>
-        }
-    </select>
-    <button type="submit" class="btn btn-outline-secondary ms-1">Save</button>
-</form>
-
-
-<div>
-    <a asp-action="Edit" asp-route-id="@Model?.EventId">Edit</a> |
+<div class="mt-3">
+    <a asp-action="Edit" asp-route-id="@Model.EventId">Edit</a> |
     <a asp-action="Index">Back to List</a>
 </div>
 
+<!-- Dwell beacon: keep logging time-on-page -->
 <script>
-    (function () {
-      var start = Date.now();
-      var sent = false;
-
-      function payload() {
-        return JSON.stringify({ eventId: @Model.EventId, dwellMs: Date.now() - start });
-      }
-
-      function sendOnce() {
-        if (sent) return;
-        sent = true;
-
-        var data = new Blob([payload()], { type: "application/json" });
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon("/Events/Dwell", data);
-        } else {
-          // Fallback for older browsers
-          fetch("/Events/Dwell", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: payload(),
-            keepalive: true
-          });
-        }
-      }
-
-      // Most reliable signals for tab close/navigation/background
-      document.addEventListener("visibilitychange", function () {
-        if (document.visibilityState === "hidden") sendOnce();
-      });
-      window.addEventListener("pagehide", sendOnce);
-    })();
+    const start = Date.now();
+    window.addEventListener('beforeunload', () => {
+      const dwell = Date.now() - start;
+      navigator.sendBeacon('/Events/Dwell', new Blob([JSON.stringify({
+        eventId: @Model.EventId, dwellMs: dwell
+      })], { type: 'application/json' }));
+    });
 </script>

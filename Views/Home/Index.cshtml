@@ -10,19 +10,21 @@
 
 @if (Model.Recommended?.Any() == true)
 {
-    <h3>Recommended for you</h3>
+    <h3 class="mb-3">Recommended for you</h3>
     <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
         @foreach (var e in Model.Recommended)
         {
             <div class="col">
-                <div class="card h-100">
+                <div class="card h-100 shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">
                             <a asp-controller="Events" asp-action="TrackAndShow" asp-route-id="@e.EventId">@e.Title</a>
                         </h5>
-                        <div class="text-muted small">@e.Category?.Name · @e.Organizer?.Name</div>
-                        <div class="text-muted small">@e.DateTime</div>
-                        <p class="card-text mt-2">@e.Description</p>
+                        <p class="card-text text-muted mb-2">@e.Description</p>
+                        <div class="small text-secondary">
+                            <div><strong>@e.DateTime.ToString("yyyy-MM-dd HH:mm")</strong></div>
+                            <div>@e.Category?.Name • @e.Venue?.Name • @e.Organizer?.Name</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -30,49 +32,50 @@
     </div>
 }
 
-<h3>Trending now</h3>
 @if (Model.TrendingOverall?.Any() == true)
 {
+    <h3 class="mb-3">Trending overall</h3>
     <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
         @foreach (var e in Model.TrendingOverall)
         {
             <div class="col">
-                <div class="card h-100">
+                <div class="card h-100 shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">
                             <a asp-controller="Events" asp-action="TrackAndShow" asp-route-id="@e.EventId">@e.Title</a>
                         </h5>
-                        <div class="text-muted small">@e.Category?.Name · @e.Organizer?.Name</div>
-                        <div class="text-muted small">@e.DateTime</div>
-                        <p class="card-text mt-2">@e.Description</p>
+                        <p class="card-text text-muted mb-2">@e.Description</p>
+                        <div class="small text-secondary">
+                            <div><strong>@e.DateTime.ToString("yyyy-MM-dd HH:mm")</strong></div>
+                            <div>@e.Category?.Name • @e.Venue?.Name • @e.Organizer?.Name</div>
+                        </div>
                     </div>
                 </div>
             </div>
         }
     </div>
-}
-else
-{
-    <p class="text-muted">No trending events yet.</p>
 }
 
 @if (Model.TrendingByCategory?.Any() == true)
 {
     @foreach (var cat in Model.TrendingByCategory)
     {
-        <h3>Trending in @cat.CategoryName</h3>
+        if (cat.Events?.Any() != true) { continue; }
+        <h4 class="mb-3">Trending in @cat.CategoryName</h4>
         <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
             @foreach (var e in cat.Events)
             {
                 <div class="col">
-                    <div class="card h-100">
+                    <div class="card h-100 shadow-sm">
                         <div class="card-body">
                             <h5 class="card-title">
                                 <a asp-controller="Events" asp-action="TrackAndShow" asp-route-id="@e.EventId">@e.Title</a>
                             </h5>
-                            <div class="text-muted small">@e.Organizer?.Name</div>
-                            <div class="text-muted small">@e.DateTime</div>
-                            <p class="card-text mt-2">@e.Description</p>
+                            <p class="card-text text-muted mb-2">@e.Description</p>
+                            <div class="small text-secondary">
+                                <div><strong>@e.DateTime.ToString("yyyy-MM-dd HH:mm")</strong></div>
+                                <div>@e.Category?.Name • @e.Venue?.Name • @e.Organizer?.Name</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -80,4 +83,13 @@ else
         </div>
     }
 }
+
+@if ((Model.Recommended?.Any() != true) && (Model.TrendingOverall?.Any() != true))
+{
+    <div class="alert alert-info">
+        No recommendations yet. Try marking a few events as <strong>Interested</strong> or <strong>Going</strong>—or check the
+        <a asp-controller="Events" asp-action="Index">Events</a> list.
+    </div>
+}
+
 

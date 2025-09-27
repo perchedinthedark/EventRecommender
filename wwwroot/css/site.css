@@ -20,3 +20,18 @@ html {
 body {
   margin-bottom: 60px;
 }
+
+/* Card tweaks */
+.card-title a {
+    text-decoration: none;
+}
+
+.card-title a:hover {
+        text-decoration: underline;
+    }
+
+/* Subtle button state cues on Details */
+.btn[disabled] {
+    pointer-events: none;
+    opacity: .65;
+}
