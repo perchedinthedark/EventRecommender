@@ -25,6 +25,14 @@ builder.Services.AddScoped<DemoDataSeeder>();
 builder.Services.AddSingleton(new RecommenderConfig());
 builder.Services.AddScoped<IRecommenderService, RecommenderService>();
 builder.Services.AddScoped<ITrendingService, TrendingService>();
+builder.Services.AddCors(o => o.AddPolicy("Spa", p =>
+    p.WithOrigins("http://localhost:8080") // or 5174 if that’s your Vite port
+     .AllowAnyHeader()
+     .AllowAnyMethod()
+     .AllowCredentials()
+));
+
+
 
 var app = builder.Build();
 
@@ -38,6 +46,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseCors("Spa");
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -47,6 +56,7 @@ app.MapRazorPages();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapControllers();
 
 app.Run();
 

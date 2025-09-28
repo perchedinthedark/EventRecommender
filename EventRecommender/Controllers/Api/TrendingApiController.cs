@@ -1,5 +1,7 @@
 ﻿using EventRecommender.Data;
+using EventRecommender.Models;
 using EventRecommender.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -14,74 +16,88 @@ namespace EventRecommender.Controllers.Api
         private readonly AppDbContext _db;
 
         public TrendingApiController(ITrendingService trending, AppDbContext db)
-        { _trending = trending; _db = db; }
-
-        // GET /api/trending/overall?topN=6
-        [HttpGet("overall")]
-        public async Task<IActionResult> Overall([FromQuery] int topN = 6)
         {
-            var uid = User.Identity?.IsAuthenticated == true
-                ? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                : null;
+            _trending = trending;
+            _db = db;
+        }
 
-            var (overallIds, _) = await _trending.GetTrendingForUserAsync(uid, topN, categoriesToShow: 0);
+        // GET /api/trending?perList=6&categoriesToShow=2
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> Get([FromQuery] int perList = 6, [FromQuery] int categoriesToShow = 2)
+        {
+            var uid = User.FindFirstValue(ClaimTypes.NameIdentifier); // null if not signed in
 
-            var events = await _db.Events.AsNoTracking()
+            var (overallIds, byCatIds) = await _trending.GetTrendingForUserAsync(uid, perList, categoriesToShow);
+
+            // Hydrate overall and preserve input order
+            var overallEvents = await _db.Events.AsNoTracking()
                 .Where(e => overallIds.Contains(e.EventId))
                 .Include(e => e.Category).Include(e => e.Venue).Include(e => e.Organizer)
                 .ToListAsync();
 
-            var order = overallIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
-            var dto = events.OrderBy(e => order[e.EventId]).Select(e => new SimpleEventDto(e)).ToList();
-            return Ok(dto);
-        }
+            var rankOverall = overallIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+            var overall = overallEvents
+                .OrderBy(e => rankOverall[e.EventId])
+                .Select(e => new EventDto(e))
+                .ToList();
 
-        // GET /api/trending/by-category?perList=6&categoriesToShow=2
-        [HttpGet("by-category")]
-        public async Task<IActionResult> ByCategory([FromQuery] int perList = 6, [FromQuery] int categoriesToShow = 2)
-        {
-            var uid = User.Identity?.IsAuthenticated == true
-                ? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                : null;
-
-            var (_, byCat) = await _trending.GetTrendingForUserAsync(uid, perList, categoriesToShow);
-
+            // Hydrate by-category blocks
             var catNames = await _db.Categories.AsNoTracking()
                 .ToDictionaryAsync(c => c.CategoryId, c => c.Name);
 
-            var result = new List<object>();
-            foreach (var kv in byCat)
+            var byCategory = new List<CategoryBlockDto>();
+            foreach (var kv in byCatIds)
             {
                 var ids = kv.Value;
-                var evs = await _db.Events.AsNoTracking()
+                var events = await _db.Events.AsNoTracking()
                     .Where(e => ids.Contains(e.EventId))
                     .Include(e => e.Category).Include(e => e.Venue).Include(e => e.Organizer)
                     .ToListAsync();
 
-                var order = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
-                result.Add(new
+                var rank = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+                byCategory.Add(new CategoryBlockDto
                 {
-                    categoryId = kv.Key,
-                    categoryName = catNames.TryGetValue(kv.Key, out var n) ? n : $"Category {kv.Key}",
-                    events = evs.OrderBy(e => order[e.EventId]).Select(e => new SimpleEventDto(e)).ToList()
+                    CategoryId = kv.Key,
+                    CategoryName = catNames.TryGetValue(kv.Key, out var nm) ? nm : $"Category {kv.Key}",
+                    Events = events.OrderBy(e => rank[e.EventId]).Select(e => new EventDto(e)).ToList()
                 });
             }
-            return Ok(result);
+
+            return Ok(new { overall, byCategory });
         }
 
-        public record SimpleEventDto
+        public record EventDto
         {
             public int Id { get; init; }
             public string Title { get; init; } = "";
+            public string? Description { get; init; }
             public DateTime DateTime { get; init; }
+            public string? Location { get; init; }
             public string Category { get; init; } = "";
             public string Venue { get; init; } = "";
             public string Organizer { get; init; } = "";
-            public SimpleEventDto(Models.Event e)
+            public int? FriendsGoing { get; init; } // (optional) not computed here
+
+            public EventDto(Event e)
             {
-                Id = e.EventId; Title = e.Title; DateTime = e.DateTime;
-                Category = e.Category?.Name ?? ""; Venue = e.Venue?.Name ?? ""; Organizer = e.Organizer?.Name ?? "";
+                Id = e.EventId;
+                Title = e.Title;
+                Description = e.Description;
+                DateTime = e.DateTime;
+                Location = e.Location;
+                Category = e.Category?.Name ?? "";
+                Venue = e.Venue?.Name ?? "";
+                Organizer = e.Organizer?.Name ?? "";
             }
+        }
+
+        public record CategoryBlockDto
+        {
+            public int CategoryId { get; init; }
+            public string CategoryName { get; init; } = "";
+            public List<EventDto> Events { get; init; } = new();
         }
     }
 }
+

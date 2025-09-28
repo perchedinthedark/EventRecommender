@@ -15,24 +15,36 @@ namespace EventRecommender.Controllers.Api
         private readonly AppDbContext _db;
 
         public RecsApiController(IRecommenderService svc, AppDbContext db)
-        { _svc = svc; _db = db; }
+        {
+            _svc = svc;
+            _db = db;
+        }
 
         // GET /api/recs?topN=6
+        // GET /api/recs/top?topN=6
         [HttpGet, Authorize]
+        [HttpGet("top"), Authorize]
         public async Task<IActionResult> Get([FromQuery] int topN = 6)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
             var ids = await _svc.RecommendForUserAsync(userId, topN);
+
             var events = await _db.Events.AsNoTracking()
                 .Where(e => ids.Contains(e.EventId))
-                .Include(e => e.Category).Include(e => e.Venue).Include(e => e.Organizer)
+                .Include(e => e.Category)
+                .Include(e => e.Venue)
+                .Include(e => e.Organizer)
                 .ToListAsync();
 
-            // preserve ranking order
+            // Preserve model ranking order
             var order = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
-            var dto = events.OrderBy(e => order[e.EventId]).Select(e => new EventDto(e)).ToList();
+
+            var dto = events
+                .OrderBy(e => order.TryGetValue(e.EventId, out var idx) ? idx : int.MaxValue)
+                .Select(e => new EventDto(e))
+                .ToList();
 
             return Ok(dto);
         }
@@ -47,11 +59,17 @@ namespace EventRecommender.Controllers.Api
             public string Category { get; init; } = "";
             public string Venue { get; init; } = "";
             public string Organizer { get; init; } = "";
+
             public EventDto(Models.Event e)
             {
-                Id = e.EventId; Title = e.Title; Description = e.Description;
-                DateTime = e.DateTime; Location = e.Location;
-                Category = e.Category?.Name ?? ""; Venue = e.Venue?.Name ?? ""; Organizer = e.Organizer?.Name ?? "";
+                Id = e.EventId;
+                Title = e.Title;
+                Description = e.Description;
+                DateTime = e.DateTime;
+                Location = e.Location;
+                Category = e.Category?.Name ?? "";
+                Venue = e.Venue?.Name ?? "";
+                Organizer = e.Organizer?.Name ?? "";
             }
         }
     }
