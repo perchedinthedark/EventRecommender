@@ -1,18 +1,32 @@
-# Build
-bin/
-obj/
+# Server (ASP.NET) build artifacts
+/EventRecommender/bin/
+/EventRecommender/obj/
 
-# Database
-app.db
-*.db-shm
-*.db-wal
+# Local DB (if created in server project folder)
+/EventRecommender/app.db
+/EventRecommender/*.db-shm
+/EventRecommender/*.db-wal
 
-# User-specific files
-*.user
-*.vs/
+# ML model artifacts (keep the folder, ignore produced zips)
+/EventRecommender/App_Data/models/*.zip
+
+# IDE
+.vs/
+.vscode/
 
 # Logs
 *.log
 
-# Config secrets (optional, depends if you use them)
-appsettings.Development.json
+# User-specific files
+*.user
+
+# Client (React) artifacts
+/client/node_modules/
+/client/dist/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Optional: only if you really want to ignore local secrets
+# /EventRecommender/appsettings.Development.json
