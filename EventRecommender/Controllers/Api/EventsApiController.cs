@@ -54,6 +54,23 @@ namespace EventRecommender.Controllers.Api
             return Ok(new { ok = true, rating = body.Rating });
         }
 
+        // GET /api/events/{id}/me
+        [HttpGet("{id:int}/me"), Authorize]
+        public async Task<IActionResult> GetMine(int id)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var row = await _db.UserEventInteractions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.EventId == id);
+
+            var status = row?.Status.ToString() ?? "None";
+            var rating = row?.Rating;
+
+            return Ok(new { status, rating });
+        }
+
         public record StatusDto(string Status);
         public record RatingDto(int Rating);
     }

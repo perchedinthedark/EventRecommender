@@ -1,92 +1,107 @@
-// API functions will go here
-// src/lib/api.ts
+// client/src/lib/api.ts
+const BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
-export type InteractionStatus = "Interested" | "Going";
+export type StatusType = "None" | "Interested" | "Going";
 
-export interface EventDto {
+export type EventDto = {
   id: number;
   title: string;
-  description?: string;
-  dateTime: string;           // ISO string
-  location?: string;
-  category?: string;          // category name
-  venue?: string;             // venue name
-  organizer?: string;         // organizer name
-  friendsGoing?: number;      // optional social signal
-}
+  description?: string | null;
+  dateTime: string;
+  location?: string | null;
+  category?: string;
+  venue?: string;
+  organizer?: string;
+  friendsGoing?: number;
+};
 
-export interface TrendingCategoryBlock {
+export type TrendingCategoryBlock = {
   categoryId: number;
   categoryName: string;
   events: EventDto[];
-}
+};
 
-export interface TrendingResponse {
+export type TrendingResponse = {
   overall: EventDto[];
   byCategory: TrendingCategoryBlock[];
+};
+
+export type MyInteraction = {
+  status: StatusType;
+  rating?: number | null;
+};
+
+// ---- helpers: PascalCase -> camelCase mapping -----------------
+function mapEvent(e: any): EventDto {
+  return {
+    id: e.Id ?? e.id,
+    title: e.Title ?? e.title,
+    description: e.Description ?? e.description ?? null,
+    dateTime: (e.DateTime ?? e.dateTime)?.toString(),
+    location: e.Location ?? e.location ?? null,
+    category: e.Category ?? e.category ?? "",
+    venue: e.Venue ?? e.venue ?? "",
+    organizer: e.Organizer ?? e.organizer ?? "",
+    friendsGoing: e.FriendsGoing ?? e.friendsGoing,
+  };
 }
 
-// Configure your backend base URL.
-// Example for local dev: VITE_API_BASE="http://localhost:5210"
-const API_BASE = (import.meta as any).env?.VITE_API_BASE ?? "";
+function mapTrending(res: any): TrendingResponse {
+  const overallRaw = res.overall ?? res.Overall ?? [];
+  const byCatRaw = res.byCategory ?? res.ByCategory ?? [];
 
-// Tiny helper for JSON requests
-async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(API_BASE + path, {
-    credentials: "include", // send cookies (Identity auth)
+  return {
+    overall: overallRaw.map(mapEvent),
+    byCategory: byCatRaw.map((b: any) => ({
+      categoryId: b.CategoryId ?? b.categoryId,
+      categoryName: b.CategoryName ?? b.categoryName ?? "",
+      events: (b.Events ?? b.events ?? []).map(mapEvent),
+    })),
+  };
+}
+
+async function http<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    throw new Error(`${res.status} ${res.statusText}`);
   }
-  // Some endpoints (like POSTs) may return empty; handle gracefully.
-  if (res.status === 204) return undefined as unknown as T;
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("application/json") ? res.json() : (undefined as unknown as T);
+  return (await res.json()) as T;
 }
 
 export const api = {
-  // Personalized recommendations for the current logged-in user
-  getRecs: (topN = 6) =>
-    http<EventDto[]>(`/api/recs?topN=${encodeURIComponent(topN)}`),
-
-  // Trending overall + category-aware (great for cold-start)
-  getTrending: (perList = 6, categoriesToShow = 2) =>
-    http<TrendingResponse>(
-      `/api/trending?perList=${encodeURIComponent(perList)}&categoriesToShow=${encodeURIComponent(categoriesToShow)}`
-    ),
-
-  // (Optional) Event details if you want a client-side details page later
-  getEvent: (id: number) => http<EventDto>(`/api/events/${id}`),
-
-  // Log an interaction (Interested / Going) and optional rating
-  postInteraction: (id: number, status: InteractionStatus, rating?: number) =>
-    http<void>(`/api/events/${id}/interact`, {
-      method: "POST",
-      body: JSON.stringify({ status, rating }),
-    }),
-
-  // Lightweight click/dwell logging via Beacon (non-blocking)
-  beaconClick: (id: number, dwellMs?: number) => {
+  async getRecs(topN = 6): Promise<EventDto[]> {
     try {
-      const body = new Blob([JSON.stringify({ dwellMs })], {
-        type: "application/json",
-      });
-      return navigator.sendBeacon(API_BASE + `/api/events/${id}/click`, body);
+      const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`);
+      return (raw ?? []).map(mapEvent);
     } catch {
-      // Fallback
-      return fetch(API_BASE + `/api/events/${id}/click`, {
-        method: "POST",
-        body: JSON.stringify({ dwellMs }),
-        headers: { "Content-Type": "application/json" },
-        keepalive: true,
-        credentials: "include",
-      }).then(() => true, () => false);
+      return []; // unauth/cold-start: empty is fine
     }
+  },
+
+  async getTrending(perList = 6, categoriesToShow = 2): Promise<TrendingResponse> {
+    const raw = await http<any>(`${BASE}/api/trending?perList=${perList}&categoriesToShow=${categoriesToShow}`);
+    return mapTrending(raw);
+  },
+
+  async getMyInteraction(eventId: number): Promise<MyInteraction> {
+    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/me`);
+  },
+
+  async setStatus(eventId: number, status: StatusType): Promise<MyInteraction> {
+    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  async setRating(eventId: number, rating: number): Promise<MyInteraction> {
+    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/rating`, {
+      method: "POST",
+      body: JSON.stringify({ rating }),
+    });
   },
 };

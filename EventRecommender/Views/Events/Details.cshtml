@@ -9,81 +9,119 @@
     bool isGoing = myStatus == InteractionStatus.Going;
 }
 
-<h1>@Model.Title</h1>
-<hr />
-
-<dl class="row">
-    <dt class="col-sm-2">Description</dt>
-    <dd class="col-sm-10">@Model.Description</dd>
-
-    <dt class="col-sm-2">When</dt>
-    <dd class="col-sm-10">@Model.DateTime</dd>
-
-    <dt class="col-sm-2">Location</dt>
-    <dd class="col-sm-10">@Model.Location</dd>
-
-    <dt class="col-sm-2">Category</dt>
-    <dd class="col-sm-10">@Model.Category?.Name</dd>
-
-    <dt class="col-sm-2">Venue</dt>
-    <dd class="col-sm-10">@Model.Venue?.Name</dd>
-
-    <dt class="col-sm-2">Organizer</dt>
-    <dd class="col-sm-10">@Model.Organizer?.Name</dd>
-</dl>
-
-@if (User.Identity?.IsAuthenticated == true)
-{
-    <div class="mb-3 d-flex align-items-center gap-2">
-
-        <!-- Interested -->
-        <form asp-action="MarkInteraction" asp-controller="Events" method="post">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="eventId" value="@Model.EventId" />
-            <input type="hidden" name="status" value="Interested" />
-            <button type="submit"
-                    class="btn @(isInterested ? "btn-primary" : "btn-outline-primary")"
-                    @(isInterested ? "disabled" : null)>
-                Interested
-            </button>
-        </form>
-
-        <!-- Going -->
-        <form asp-action="MarkInteraction" asp-controller="Events" method="post">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="eventId" value="@Model.EventId" />
-            <input type="hidden" name="status" value="Going" />
-            <button type="submit"
-                    class="btn @(isGoing ? "btn-success" : "btn-outline-success")"
-                    @(isGoing ? "disabled" : null)>
-                Going
-            </button>
-        </form>
-
-        <!-- Rating -->
-        <form asp-action="SetRating" asp-controller="Events" method="post" class="ms-3 d-flex align-items-center">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="eventId" value="@Model.EventId" />
-            <label class="me-2 mb-0">Rating</label>
-            <select name="rating" class="form-select w-auto">
-                <option value="">—</option>
-                @for (var i = 1; i <= 5; i++)
+<div class="container--details">
+    <div class="card--details">
+        <header class="details-header">
+            <h1 class="details-title">@Model.Title</h1>
+            <div class="details-meta meta">
+                <div class="meta-row">
+                    <span class="meta-label">When</span>
+                    <span>@Model.DateTime</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Model.Location))
                 {
-                    <option value="@i" selected="@(myRating == i ? "selected" : null)">@i</option>
+                    <div class="meta-row">
+                        <span class="meta-label">Location</span>
+                        <span>@Model.Location</span>
+                    </div>
                 }
-            </select>
-            <button type="submit" class="btn btn-outline-secondary ms-2">Save</button>
-        </form>
-    </div>
-}
-else
-{
-    <p><a asp-area="Identity" asp-page="/Account/Login">Log in</a> to mark Interested/Going or to rate this event.</p>
-}
+                <div class="meta-row">
+                    <span class="meta-label">Category</span>
+                    <span>
+                        @if (Model.Category?.Name != null)
+                        {
+                            <span class="chip chip--accent">@Model.Category?.Name</span>
+                        }
+                        @if (Model.Venue?.Name != null)
+                        {
+                            <span class="meta-bullet">•</span> 
+                            @Model.Venue?.Name
+                        }
+                        @if (Model.Organizer?.Name != null)
+                        {
+                            <span class="meta-bullet">•</span> 
+                            @Model.Organizer?.Name
+                        }
+                    </span>
+                </div>
+            </div>
+        </header>
 
-<div class="mt-3">
-    <a asp-action="Edit" asp-route-id="@Model.EventId">Edit</a> |
-    <a asp-action="Index">Back to List</a>
+        <div class="details-grid">
+            <!-- LEFT: content -->
+            <section class="details-content">
+                @if (!string.IsNullOrWhiteSpace(Model.Description))
+                {
+                    <h2 class="section-title">About this event</h2>
+                    <p class="details-desc">@Model.Description</p>
+                }
+            </section>
+
+            <!-- RIGHT: actions -->
+            <aside class="details-actions">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="card--pane">
+                        <h3 class="pane-title">Your actions</h3>
+
+                        <div class="btn-row">
+                            <!-- Interested -->
+                            <form asp-action="MarkInteraction" asp-controller="Events" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="eventId" value="@Model.EventId" />
+                                <input type="hidden" name="status" value="Interested" />
+                                <button type="submit"
+                                        class="btn @(isInterested ? "btn-primary" : "btn-outline-primary")"
+                                        @(isInterested ? "disabled" : null)>
+                                    Interested
+                                </button>
+                            </form>
+
+                            <!-- Going -->
+                            <form asp-action="MarkInteraction" asp-controller="Events" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="eventId" value="@Model.EventId" />
+                                <input type="hidden" name="status" value="Going" />
+                                <button type="submit"
+                                        class="btn @(isGoing ? "btn-success" : "btn-outline-success")"
+                                        @(isGoing ? "disabled" : null)>
+                                    @(isGoing ? "You're Going!" : "Going")
+                                </button>
+                            </form>
+                        </div>
+
+                        <form asp-action="SetRating" asp-controller="Events" method="post" class="rating-row">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="eventId" value="@Model.EventId" />
+                            <label class="rating-label">Rating</label>
+                            <select name="rating" class="rating-select">
+                                <option value="">—</option>
+                                @for (var i = 1; i <= 5; i++)
+                                {
+                                    <option value="@i" selected="@(myRating == i ? "selected" : null)">@i</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-outline-secondary">Save</button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <div class="card--pane">
+                        <h3 class="pane-title">Sign in to interact</h3>
+                        <p class="meta">Log in to mark Interested/Going or to rate this event.</p>
+                        <a class="btn btn-primary" asp-area="Identity" asp-page="/Account/Login">Log in</a>
+                    </div>
+                }
+
+                <div class="links-row">
+                    <a asp-action="Edit" asp-route-id="@Model.EventId">Edit</a>
+                    <span class="meta-bullet">•</span>
+                    <a asp-action="Index">Back to List</a>
+                </div>
+            </aside>
+        </div>
+    </div>
 </div>
 
 <!-- Dwell beacon: keep logging time-on-page -->

@@ -1,58 +1,46 @@
 // src/App.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api, EventDto, TrendingCategoryBlock } from "./lib/api";
-import "./App.css";
+import { useEffect, useState } from "react";
+import { api, EventDto, TrendingCategoryBlock } from "@/lib/api";
 
-function EventCard({ ev }: { ev: EventDto }) {
-  // Link to your ASP.NET routing that logs the view via TrackAndShow
-  const href = `/Events/TrackAndShow/${ev.id}`;
-
-  return (
-    <div className="card" style={{ borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,.08)" }}>
-      <div className="card-body">
-        <h5 className="card-title">
-          <a href={href} style={{ textDecoration: "none" }}>
-            {ev.title}
-          </a>
-        </h5>
-        {ev.description && (
-          <p className="card-text" style={{ color: "#444" }}>
-            {ev.description.length > 140 ? ev.description.slice(0, 140) + "…" : ev.description}
-          </p>
-        )}
-        <div style={{ fontSize: 14, color: "#666" }}>
-          <div>{new Date(ev.dateTime).toLocaleString()}</div>
-          {ev.location && <div>{ev.location}</div>}
-          <div>
-            {ev.category && <span>#{ev.category} </span>}
-            {ev.venue && <span>• {ev.venue} </span>}
-            {ev.organizer && <span>• {ev.organizer}</span>}
-          </div>
-          {typeof ev.friendsGoing === "number" && ev.friendsGoing > 0 && (
-            <div style={{ marginTop: 4 }}>👥 {ev.friendsGoing} friend(s) going</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+import EventCard from "@/components/EventCard";
+import SkeletonCard from "@/components/SkeletonCard";
+import EmptyState from "@/components/EmptyState";
+import { SectionHeader } from "@/components/SectionHeader"; // uses the light header we made
 
 function Section({
   title,
   items,
+  loading,
   emptyText,
+  ctaLabel,
+  onCtaClick,
 }: {
   title: string;
   items: EventDto[];
+  loading?: boolean;
   emptyText?: string;
+  ctaLabel?: string;
+  onCtaClick?: () => void;
 }) {
   return (
-    <section style={{ marginBottom: 28 }}>
-      <h3 style={{ marginBottom: 12 }}>{title}</h3>
-      {items.length === 0 ? (
-        <div className="text-muted">{emptyText ?? "Nothing to show yet."}</div>
+    <section className="mb-10">
+      <SectionHeader title={title} ctaLabel={ctaLabel} onCtaClick={onCtaClick} />
+      {loading ? (
+        <div
+          className="grid gap-6"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <EmptyState title={emptyText ?? "Nothing to show yet."} />
       ) : (
-        <div className="grid" style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+        <div
+          className="grid gap-6"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
+        >
           {items.map((ev) => (
             <EventCard key={ev.id} ev={ev} />
           ))}
@@ -68,14 +56,12 @@ export default function App() {
   const [trendingByCat, setTrendingByCat] = useState<TrendingCategoryBlock[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // fetch everything on load
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
+    (async () => {
       try {
         const [r, t] = await Promise.all([
-          api.getRecs(6).catch(() => [] as EventDto[]), // recs may require login/models
+          api.getRecs(6).catch(() => [] as EventDto[]), // may require auth/models
           api.getTrending(6, 2),
         ]);
         if (cancelled) return;
@@ -85,66 +71,69 @@ export default function App() {
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to load data.");
       }
-    }
-
-    load();
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // basic nav/header
-  const header = useMemo(
-    () => (
-      <nav style={{ padding: "12px 16px", borderBottom: "1px solid #eee", marginBottom: 24 }}>
-        <strong>EventRecommender</strong>
-        <span style={{ marginLeft: 16, color: "#666" }}>React preview</span>
-      </nav>
-    ),
-    []
+  const header = (
+    <nav className="px-4 py-4 border-b border-slate-200 mb-8 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+      <div className="max-w-[1200px] mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <strong className="text-lg text-slate-900">EventRecommender</strong>
+          <span className="text-slate-500">React preview</span>
+        </div>
+        {/* placeholder for account / theme toggle if you add later */}
+      </div>
+    </nav>
   );
 
   if (error) {
     return (
-      <div>
+      <div className="min-h-screen bg-[hsl(var(--background))]">
         {header}
-        <div style={{ padding: 16, color: "crimson" }}>Error: {error}</div>
+        <div className="max-w-[1200px] mx-auto px-4">
+          <div className="text-red-600">Error: {error}</div>
+        </div>
       </div>
     );
   }
 
-  const isLoading = recs === null || trendingOverall === null || trendingByCat === null;
+  const isLoading =
+    recs === null || trendingOverall === null || trendingByCat === null;
 
   return (
-    <div>
+    <div className="min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
       {header}
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px 40px" }}>
-        {isLoading ? (
-          <div>Loading…</div>
-        ) : (
-          <>
-            <Section
-              title="Recommended for you"
-              items={recs ?? []}
-              emptyText="Sign in, click a few events, then run Admin → Train to see personalized picks."
-            />
+      <main className="max-w-[1200px] mx-auto px-4 pb-12">
+        <Section
+          title="Recommended for You"
+          items={recs ?? []}
+          loading={isLoading}
+          emptyText="Sign in, click a few events, then run Admin → Train to see personalized picks."
+          ctaLabel="See all recommendations"
+          onCtaClick={() => {
+            // optional: route to a /recs page later
+          }}
+        />
 
-            <Section
-              title="Trending now"
-              items={trendingOverall ?? []}
-              emptyText="No trending yet. Browse events to generate activity."
-            />
+        <Section
+          title="Trending Now"
+          items={trendingOverall ?? []}
+          loading={isLoading}
+          emptyText="No trending yet. Browse events to generate activity."
+        />
 
-            {(trendingByCat ?? []).map((block) => (
-              <Section
-                key={block.categoryId}
-                title={`Trending in ${block.categoryName}`}
-                items={block.events}
-                emptyText="—"
-              />
-            ))}
-          </>
-        )}
+        {(trendingByCat ?? []).map((block) => (
+          <Section
+            key={block.categoryId}
+            title={`Trending in ${block.categoryName}`}
+            items={block.events}
+            loading={isLoading}
+            emptyText="—"
+          />
+        ))}
       </main>
     </div>
   );
