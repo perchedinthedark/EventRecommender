@@ -118,8 +118,17 @@ export const api = {
     async following(): Promise<{ id: string; userName: string; email: string }[]> {
       return await http(`${BASE}/api/social/following`);
     },
+    async followers(): Promise<{ id: string; userName: string; email: string }[]> {
+    return await http(`${BASE}/api/social/followers`);
+    },
     async friendsGoing(eventId: number): Promise<{ count: number }> {
       return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`);
     },
   },
+
+    users: {
+    async search(q: string): Promise<{ id: string; userName: string; email: string }[]> {
+      return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`);
+    },
+  }
 };

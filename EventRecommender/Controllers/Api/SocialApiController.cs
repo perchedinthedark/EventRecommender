@@ -50,14 +50,34 @@ namespace EventRecommender.Controllers.Api
         public async Task<IActionResult> Following()
         {
             var uid = UID(); if (uid == null) return Unauthorized();
-            var list = await _db.Friendships
+
+            var ids = await _db.Friendships
                 .Where(f => f.FollowerId == uid)
-                .Select(f => new { id = f.FolloweeId })
+                .Select(f => f.FolloweeId)
                 .ToListAsync();
 
-            // hydrate usernames for convenience
-            var ids = list.Select(x => x.id).ToList();
-            var users = await _db.Users.Where(u => ids.Contains(u.Id))
+            var users = await _db.Users
+                .Where(u => ids.Contains(u.Id))
+                .Select(u => new { id = u.Id, userName = u.UserName, email = u.Email })
+                .ToListAsync();
+
+            return Ok(users);
+        }
+
+        // NEW: Followers list (people who follow ME)
+        [Authorize]
+        [HttpGet("followers")]
+        public async Task<IActionResult> Followers()
+        {
+            var uid = UID(); if (uid == null) return Unauthorized();
+
+            var ids = await _db.Friendships
+                .Where(f => f.FolloweeId == uid)
+                .Select(f => f.FollowerId)
+                .ToListAsync();
+
+            var users = await _db.Users
+                .Where(u => ids.Contains(u.Id))
                 .Select(u => new { id = u.Id, userName = u.UserName, email = u.Email })
                 .ToListAsync();
 
@@ -71,8 +91,10 @@ namespace EventRecommender.Controllers.Api
         {
             var uid = UID(); if (uid == null) return Unauthorized();
 
-            var followees = await _db.Friendships.Where(f => f.FollowerId == uid)
-                .Select(f => f.FolloweeId).ToListAsync();
+            var followees = await _db.Friendships
+                .Where(f => f.FollowerId == uid)
+                .Select(f => f.FolloweeId)
+                .ToListAsync();
 
             var count = await _db.UserEventInteractions
                 .Where(i => i.EventId == eventId && i.Status == InteractionStatus.Going && followees.Contains(i.UserId))

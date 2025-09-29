@@ -24,27 +24,30 @@ namespace EventRecommender.Controllers.Api
 
             var user = new ApplicationUser { UserName = dto.Email, Email = dto.Email };
             var res = await _um.CreateAsync(user, dto.Password);
-            if (!res.Succeeded) return BadRequest(string.Join(" | ", res.Errors.Select(e => e.Description)));
+            if (!res.Succeeded)
+                return BadRequest(string.Join(" | ", res.Errors.Select(e => e.Description)));
 
             await _sm.SignInAsync(user, isPersistent: true);
-            return Ok(new { ok = true });
-        }
 
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
+        }
         public record RegisterDto(string Email, string Password);
 
         [HttpPost("login")]
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
+            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+                return BadRequest("email/password required");
+
             var user = await _um.FindByEmailAsync(dto.Email);
             if (user == null) return Unauthorized();
 
             var res = await _sm.PasswordSignInAsync(user, dto.Password, isPersistent: true, lockoutOnFailure: false);
             if (!res.Succeeded) return Unauthorized();
 
-            return Ok(new { ok = true });
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
         }
-
         public record LoginDto(string Email, string Password);
 
         [Authorize]
@@ -57,15 +60,14 @@ namespace EventRecommender.Controllers.Api
         }
 
         [HttpGet("me")]
-        public IActionResult Me()
+        public async Task<IActionResult> Me()
         {
-            if (!User.Identity?.IsAuthenticated ?? true) return Unauthorized();
-            return Ok(new
-            {
-                id = _um.GetUserId(User),
-                userName = User.Identity!.Name,
-                email = User.Claims.FirstOrDefault(c => c.Type == "email")?.Value ?? User.Identity!.Name
-            });
+            if (!(User?.Identity?.IsAuthenticated ?? false)) return Unauthorized();
+
+            var user = await _um.GetUserAsync(User);
+            if (user == null) return Unauthorized();
+
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
         }
     }
 }
