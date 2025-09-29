@@ -14,6 +14,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Identity setup
 builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
     .AddEntityFrameworkStores<AppDbContext>();
+builder.Services.ConfigureApplicationCookie(opt =>
+{
+    opt.Cookie.Name = ".EventRec.Auth";
+    opt.Cookie.HttpOnly = true;
+    opt.Cookie.SameSite = SameSiteMode.Lax; // good for cookie auth + SPA on same machine
+    // opt.Cookie.SecurePolicy = CookieSecurePolicy.None; // ok for http:// in dev
+});
+
 
 // MVC
 builder.Services.AddControllersWithViews();

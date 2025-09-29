@@ -1,172 +1,94 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Calendar, MapPin, DollarSign, ArrowLeft, Users } from "lucide-react";
-import { format } from "date-fns";
-import { getEventById } from "@/data/mockEvents";
-import { CategoryChip } from "@/components/CategoryChip";
-import { AvatarStack } from "@/components/AvatarStack";
-import { RatingStars } from "@/components/RatingStars";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { api, EventDto } from "@/lib/api";
+import { useDwell } from "@/pages/hooks/useDwell";
 import { StatusButtons, EventStatus } from "@/components/StatusButtons";
-import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
+import SkeletonCard from "@/components/SkeletonCard";
+import { Calendar, MapPin } from "lucide-react";
 
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const eventId = useMemo(() => Number(id), [id]);
+  const [ev, setEv] = useState<EventDto | null>(null);
   const [status, setStatus] = useState<EventStatus>("None");
-  
-  const event = id ? getEventById(id) : null;
+  const [busy, setBusy] = useState(false);
+  const [friendsGoing, setFriendsGoing] = useState<number | null>(null);
 
-  if (!event) {
+  useEffect(() => {
+    if (!eventId) return;
+    api.getEvent(eventId).then(setEv);
+    api.getMyInteraction(eventId).then(m => setStatus((m?.status as EventStatus) ?? "None")).catch(()=>{});
+    api.social.friendsGoing(eventId).then(r => setFriendsGoing(r.count)).catch(()=> setFriendsGoing(null));
+    // record click once
+    api.telemetry.click(eventId).catch(()=>{});
+  }, [eventId]);
+
+  useDwell(eventId);
+
+  async function handleStatusChange(next: EventStatus) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api.setStatus(eventId, next);
+      setStatus(next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!ev) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <EmptyState
-          icon={Calendar}
-          headline="Event not found"
-          helperText="The event you're looking for doesn't exist or has been removed"
-        />
+      <div className="max-w-[1000px] mx-auto px-4 py-6">
+        <SkeletonCard />
       </div>
     );
   }
 
-  const date = new Date(event.dateTime);
-  const isPastEvent = date < new Date();
-  const totalFriends = event.friendsGoing + event.friendsInterested;
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header Image */}
-      <div className="relative h-64 md:h-96 bg-gradient-to-br from-primary/20 to-accent/20">
-        {event.imageUrl ? (
-          <img 
-            src={event.imageUrl} 
-            alt={event.title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-primary" />
-        )}
-        <div className="absolute inset-0 bg-gradient-overlay" />
-        
-        {/* Back Button */}
-        <Button
-          onClick={() => navigate("/")}
-          variant="ghost"
-          size="icon"
-          className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm hover:bg-background"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-      </div>
+    <div className="max-w-[1000px] mx-auto px-4 py-6">
+      <nav className="mb-4 text-sm">
+        <Link to="/" className="text-blue-600 hover:underline">← Back</Link>
+      </nav>
 
-      {/* Content */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Title Section */}
-          <div className="mb-6">
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              {event.title}
-            </h1>
-            
-            {/* Chips */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <CategoryChip text={event.categoryName} variant="primary" />
-              <CategoryChip text={event.organizerName} variant="accent" />
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden">
+        <div className="h-44 bg-gradient-to-b from-blue-400 to-blue-300" />
+        <div className="p-6">
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">{ev.title}</h1>
+
+          <div className="space-y-1.5 text-[14px] text-slate-600 mb-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span>{new Date(ev.dateTime).toLocaleString()}</span>
             </div>
-
-            {/* Event Details */}
-            <div className="space-y-3 text-foreground">
+            {ev.location && (
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-muted-foreground" />
-                <span className="font-medium">
-                  {format(date, "EEEE, MMMM d, yyyy • h:mm a")}
-                </span>
+                <MapPin className="w-4 h-4 text-slate-500" />
+                <span>{ev.location}</span>
               </div>
-              
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <span className="font-medium">{event.venueName}</span>
-                  {event.address && (
-                    <span className="text-muted-foreground block text-sm mt-1">
-                      {event.address}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {event.price && (
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium">{event.price}</span>
-                </div>
-              )}
-            </div>
+            )}
+            {ev.organizer && <div className="text-slate-500">by {ev.organizer}</div>}
           </div>
 
-          {/* Social Proof */}
-          {totalFriends > 0 && (
-            <div className="bg-card rounded-lg p-4 mb-6 shadow-card">
-              <div className="flex items-center gap-4">
-                <AvatarStack count={totalFriends} size="md" />
-                <div>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Users className="w-4 h-4" />
-                    <span>{totalFriends} friends are interested</span>
-                  </div>
-                  <div className="text-sm mt-1">
-                    {event.friendsGoing > 0 && (
-                      <span className="text-success font-medium">
-                        {event.friendsGoing} going
-                      </span>
-                    )}
-                    {event.friendsGoing > 0 && event.friendsInterested > 0 && (
-                      <span className="text-muted-foreground"> • </span>
-                    )}
-                    {event.friendsInterested > 0 && (
-                      <span className="text-primary font-medium">
-                        {event.friendsInterested} interested
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+          {!!ev.description && (
+            <>
+              <h2 className="text-lg font-semibold text-slate-900 mb-1">About</h2>
+              <p className="text-slate-700 leading-7">{ev.description}</p>
+            </>
           )}
 
-          {/* Action Buttons */}
-          {!isPastEvent && (
-            <div className="mb-8">
-              <StatusButtons 
-                currentStatus={status}
-                onStatusChange={setStatus}
-              />
-            </div>
-          )}
+          <div className="mt-5">
+            <StatusButtons
+              currentStatus={status}
+              onStatusChange={handleStatusChange}
+              className={busy ? "opacity-70 pointer-events-none" : undefined}
+            />
+          </div>
 
-          {/* Rating (for past events) */}
-          {isPastEvent && event.rating && (
-            <div className="bg-accent-light rounded-lg p-4 mb-6">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">
-                  Event Rating
-                </span>
-                <RatingStars rating={event.rating} size="md" />
-              </div>
-            </div>
-          )}
-
-          {/* Description */}
-          {event.description && (
-            <div className="prose prose-lg max-w-none">
-              <h2 className="text-xl font-semibold text-foreground mb-3">
-                About this event
-              </h2>
-              <p className="text-muted-foreground leading-relaxed">
-                {event.description}
-              </p>
-            </div>
-          )}
+          <div className="mt-4 text-sm text-slate-600">
+            {typeof friendsGoing === "number" && (
+              <span>👥 {friendsGoing} of your friends are going</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

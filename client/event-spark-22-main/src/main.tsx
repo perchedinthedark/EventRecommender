@@ -1,13 +1,24 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { HashRouter as Router } from "react-router-dom";
-import App from "./App.tsx";
+import { HashRouter, Routes, Route } from "react-router-dom";
+import App from "./App";
+import EventDetails from "@/pages/EventDetails";
+import LoginPage from "@/pages/LoginPage";
+import RegisterPage from "@/pages/RegisterPage";
+import PeoplePage from "@/pages/PeoplePage";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Router>
-      <App />
-    </Router>
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/event/:id" element={<EventDetails />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/people" element={<PeoplePage />} />
+      </Routes>
+    </HashRouter>
   </React.StrictMode>
 );
+

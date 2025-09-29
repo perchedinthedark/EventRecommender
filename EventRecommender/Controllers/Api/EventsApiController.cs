@@ -71,6 +71,31 @@ namespace EventRecommender.Controllers.Api
             return Ok(new { status, rating });
         }
 
+
+        // GET /api/events/{id}
+        [HttpGet("{id:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetEvent(int id)
+        {
+            var e = await _db.Events.AsNoTracking()
+                .Include(x => x.Category).Include(x => x.Venue).Include(x => x.Organizer)
+                .FirstOrDefaultAsync(x => x.EventId == id);
+            if (e == null) return NotFound();
+
+            return Ok(new
+            {
+                id = e.EventId,
+                title = e.Title,
+                description = e.Description,
+                dateTime = e.DateTime,
+                location = e.Location,
+                category = e.Category?.Name ?? "",
+                venue = e.Venue?.Name ?? "",
+                organizer = e.Organizer?.Name ?? ""
+            });
+        }
+
+
         public record StatusDto(string Status);
         public record RatingDto(int Rating);
     }
