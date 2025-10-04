@@ -37,7 +37,7 @@ export default function LoginPage() {
 
           <form onSubmit={onSubmit} className="space-y-3">
             <input
-              className="w-full border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full bg-slate-50 text-slate-900 placeholder-slate-500 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -45,7 +45,7 @@ export default function LoginPage() {
             />
             <input
               type="password"
-              className="w-full border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full bg-slate-50 text-slate-900 placeholder-slate-500 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

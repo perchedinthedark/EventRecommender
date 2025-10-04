@@ -5,6 +5,8 @@ import { useDwell } from "@/pages/hooks/useDwell";
 import { StatusButtons, EventStatus } from "@/components/StatusButtons";
 import SkeletonCard from "@/components/SkeletonCard";
 import { Calendar, MapPin } from "lucide-react";
+import { RatingStars } from "@/components/RatingStars";
+import RatingSelect from "@/components/RatingSelect";
 
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>();
@@ -13,14 +15,24 @@ export default function EventDetails() {
   const [status, setStatus] = useState<EventStatus>("None");
   const [busy, setBusy] = useState(false);
   const [friendsGoing, setFriendsGoing] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   useEffect(() => {
     if (!eventId) return;
     api.getEvent(eventId).then(setEv);
-    api.getMyInteraction(eventId).then(m => setStatus((m?.status as EventStatus) ?? "None")).catch(()=>{});
-    api.social.friendsGoing(eventId).then(r => setFriendsGoing(r.count)).catch(()=> setFriendsGoing(null));
-    // record click once
-    api.telemetry.click(eventId).catch(()=>{});
+    api
+      .getMyInteraction(eventId)
+      .then((m) => {
+        setStatus((m?.status as EventStatus) ?? "None");
+        setRating(typeof m?.rating === "number" ? m.rating! : null);
+      })
+      .catch(() => {});
+    api.social
+      .friendsGoing(eventId)
+      .then((r) => setFriendsGoing(r.count))
+      .catch(() => setFriendsGoing(null));
+    api.telemetry.click(eventId).catch(() => {});
   }, [eventId]);
 
   useDwell(eventId);
@@ -36,6 +48,17 @@ export default function EventDetails() {
     }
   }
 
+  async function handleRate(v: number) {
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    try {
+      await api.setRating(eventId, v);
+      setRating(v);
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
   if (!ev) {
     return (
       <div className="max-w-[1000px] mx-auto px-4 py-6">
@@ -47,13 +70,21 @@ export default function EventDetails() {
   return (
     <div className="max-w-[1000px] mx-auto px-4 py-6">
       <nav className="mb-4 text-sm">
-        <Link to="/" className="text-blue-600 hover:underline">← Back</Link>
+        <Link to="/" className="text-blue-600 hover:underline">
+          ← Back
+        </Link>
       </nav>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden">
         <div className="h-44 bg-gradient-to-b from-blue-400 to-blue-300" />
         <div className="p-6">
           <h1 className="text-2xl font-semibold text-slate-900 mb-2">{ev.title}</h1>
+
+          {!!rating && (
+            <div className="mb-3">
+              <RatingStars rating={rating} size="md" />
+            </div>
+          )}
 
           <div className="space-y-1.5 text-[14px] text-slate-600 mb-4">
             <div className="flex items-center gap-2">
@@ -76,18 +107,16 @@ export default function EventDetails() {
             </>
           )}
 
-          <div className="mt-5">
-            <StatusButtons
-              currentStatus={status}
-              onStatusChange={handleStatusChange}
-              className={busy ? "opacity-70 pointer-events-none" : undefined}
-            />
+          <div className={(busy || ratingBusy) ? "opacity-70 pointer-events-none mt-5" : "mt-5"}>
+            <StatusButtons currentStatus={status} onStatusChange={handleStatusChange} />
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-sm text-slate-600">Your rating:</span>
+              <RatingSelect value={rating} onChange={handleRate} />
+            </div>
           </div>
 
           <div className="mt-4 text-sm text-slate-600">
-            {typeof friendsGoing === "number" && (
-              <span>👥 {friendsGoing} of your friends are going</span>
-            )}
+            {typeof friendsGoing === "number" && <span>👥 {friendsGoing} of your friends are going</span>}
           </div>
         </div>
       </div>

@@ -68,32 +68,24 @@ export default function PeoplePage() {
           <h1 className="text-2xl font-semibold mb-4 text-slate-900">People</h1>
           {!me && <div className="text-slate-600 mb-4">Log in to follow people.</div>}
 
-          {/* Search */}
           <div className="flex gap-2 mb-8">
             <input
-              className="flex-1 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="flex-1 bg-slate-50 text-slate-900 placeholder-slate-500 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
               placeholder="Search people"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && search()}
             />
-            <button
-              onClick={search}
-              className="px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
-            >
+            <button onClick={search} className="px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
               Search
             </button>
           </div>
 
-          {/* Columns */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Following */}
             <section className="border border-slate-200 rounded-xl p-4">
               <h2 className="text-lg font-semibold mb-3 text-slate-900">Following</h2>
               <ul className="space-y-2">
-                {following.length === 0 && (
-                  <li className="text-slate-500">You’re not following anyone yet.</li>
-                )}
+                {following.length === 0 && <li className="text-slate-500">You’re not following anyone yet.</li>}
                 {following.map((u) => (
                   <li
                     key={u.id}
@@ -115,13 +107,10 @@ export default function PeoplePage() {
               </ul>
             </section>
 
-            {/* Followers */}
             <section className="border border-slate-200 rounded-xl p-4">
               <h2 className="text-lg font-semibold mb-3 text-slate-900">Followers</h2>
               <ul className="space-y-2">
-                {followers.length === 0 && (
-                  <li className="text-slate-500">No one follows you yet.</li>
-                )}
+                {followers.length === 0 && <li className="text-slate-500">No one follows you yet.</li>}
                 {followers.map((u) => {
                   const iFollow = following.some((f) => f.id === u.id);
                   return (
@@ -134,9 +123,7 @@ export default function PeoplePage() {
                         <div className="text-sm text-slate-600">{u.email}</div>
                       </div>
                       {iFollow ? (
-                        <span className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">
-                          Following
-                        </span>
+                        <span className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">Following</span>
                       ) : (
                         <button
                           onClick={() => follow(u.id)}
@@ -153,13 +140,10 @@ export default function PeoplePage() {
             </section>
           </div>
 
-          {/* Results */}
           <div className="mt-8">
             <h2 className="text-lg font-semibold mb-2 text-slate-900">Results</h2>
             <ul className="space-y-2">
-              {results.length === 0 && (
-                <li className="text-slate-500">No results</li>
-              )}
+              {results.length === 0 && <li className="text-slate-500">No results</li>}
               {results.map((u) => {
                 const iFollow = following.some((f) => f.id === u.id);
                 return (

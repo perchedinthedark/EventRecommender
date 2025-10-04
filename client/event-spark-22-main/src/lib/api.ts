@@ -19,8 +19,8 @@ export type TrendingCategoryBlock = {
   categoryName: string;
   events: EventDto[];
 };
-export type TrendingResponse = { overall: EventDto[]; byCategory: TrendingCategoryBlock[]; };
-export type MyInteraction = { status: StatusType; rating?: number | null; };
+export type TrendingResponse = { overall: EventDto[]; byCategory: TrendingCategoryBlock[] };
+export type MyInteraction = { status: StatusType; rating?: number | null };
 
 function mapEvent(e: any): EventDto {
   return {
@@ -47,20 +47,40 @@ function mapTrending(res: any): TrendingResponse {
     })),
   };
 }
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    // Try to surface useful identity errors (password policy, duplicate email, etc.)
+    let bodyText = "";
+    try {
+      bodyText = await res.text();
+      try {
+        const j = JSON.parse(bodyText);
+        const msg = j?.message || j?.error || j?.errors?.join?.(" | ") || bodyText;
+        throw new Error(msg || `${res.status} ${res.statusText}`);
+      } catch {
+        throw new Error(bodyText || `${res.status} ${res.statusText}`);
+      }
+    } catch {
+      throw new Error(`${res.status} ${res.statusText}`);
+    }
+  }
   return (await res.json()) as T;
 }
 
 export const api = {
   async getRecs(topN = 6): Promise<EventDto[]> {
-    try { const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`); return (raw ?? []).map(mapEvent); }
-    catch { return []; }
+    try {
+      const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`);
+      return (raw ?? []).map(mapEvent);
+    } catch {
+      return [];
+    }
   },
   async getTrending(perList = 6, categoriesToShow = 2): Promise<TrendingResponse> {
     const raw = await http<any>(`${BASE}/api/trending?perList=${perList}&categoriesToShow=${categoriesToShow}`);
@@ -71,12 +91,14 @@ export const api = {
   },
   async setStatus(eventId: number, status: StatusType): Promise<MyInteraction> {
     return await http<MyInteraction>(`${BASE}/api/events/${eventId}/status`, {
-      method: "POST", body: JSON.stringify({ status }),
+      method: "POST",
+      body: JSON.stringify({ status }),
     });
   },
   async setRating(eventId: number, rating: number): Promise<MyInteraction> {
     return await http<MyInteraction>(`${BASE}/api/events/${eventId}/rating`, {
-      method: "POST", body: JSON.stringify({ rating }),
+      method: "POST",
+      body: JSON.stringify({ rating }),
     });
   },
   async getEvent(eventId: number): Promise<EventDto> {
@@ -119,16 +141,16 @@ export const api = {
       return await http(`${BASE}/api/social/following`);
     },
     async followers(): Promise<{ id: string; userName: string; email: string }[]> {
-    return await http(`${BASE}/api/social/followers`);
+      return await http(`${BASE}/api/social/followers`);
     },
     async friendsGoing(eventId: number): Promise<{ count: number }> {
       return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`);
     },
   },
 
-    users: {
+  users: {
     async search(q: string): Promise<{ id: string; userName: string; email: string }[]> {
       return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`);
     },
-  }
+  },
 };

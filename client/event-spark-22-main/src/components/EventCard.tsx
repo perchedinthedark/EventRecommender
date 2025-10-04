@@ -3,19 +3,30 @@ import { Calendar, MapPin } from "lucide-react";
 import { api, EventDto } from "@/lib/api";
 import { StatusButtons, EventStatus } from "./StatusButtons";
 import { AvatarStack } from "./AvatarStack";
+import { RatingStars } from "./RatingStars";
+import RatingSelect from "./RatingSelect";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 export default function EventCard({ ev }: { ev: EventDto }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<EventStatus>("None");
+  const [rating, setRating] = useState<number | undefined>(undefined);
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   useEffect(() => {
     let ignore = false;
-    api.getMyInteraction(ev.id).then((m) => {
-      if (!ignore && m?.status) setStatus(m.status as EventStatus);
-    }).catch(()=>{});
-    return () => { ignore = true; };
+    api
+      .getMyInteraction(ev.id)
+      .then((m) => {
+        if (ignore) return;
+        if (m?.status) setStatus(m.status as EventStatus);
+        if (typeof m?.rating === "number") setRating(m.rating);
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
   }, [ev.id]);
 
   async function handleStatusChange(next: EventStatus) {
@@ -29,11 +40,24 @@ export default function EventCard({ ev }: { ev: EventDto }) {
     }
   }
 
+  async function handleRate(v: number) {
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    try {
+      await api.setRating(ev.id, v);
+      setRating(v);
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
   return (
-    <div className={cn(
-      "bg-white rounded-[24px] border border-slate-200 shadow-lg overflow-hidden",
-      "transition-all duration-200 hover:shadow-xl"
-    )}>
+    <div
+      className={cn(
+        "bg-white rounded-[24px] border border-slate-200 shadow-lg overflow-hidden",
+        "transition-all duration-200 hover:shadow-xl"
+      )}
+    >
       <div className="h-36 bg-gradient-to-b from-blue-400 to-blue-300 relative">
         {ev.category && (
           <span className="absolute top-3 left-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white/90 text-slate-800 shadow">
@@ -47,6 +71,13 @@ export default function EventCard({ ev }: { ev: EventDto }) {
             {ev.title}
           </Link>
         </h5>
+
+        {!!rating && (
+          <div className="mb-2">
+            <RatingStars rating={rating} size="sm" />
+          </div>
+        )}
+
         <div className="space-y-1.5 text-[14px] text-slate-600 mb-2.5">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-500" />
@@ -58,13 +89,17 @@ export default function EventCard({ ev }: { ev: EventDto }) {
               <span>{ev.location}</span>
             </div>
           )}
-          {ev.organizer && (
-            <div className="text-slate-500">by {ev.organizer}</div>
-          )}
+          {ev.organizer && <div className="text-slate-500">by {ev.organizer}</div>}
         </div>
-        <div className={cn("mt-3", busy && "opacity-70 pointer-events-none")}>
+
+        <div className={cn("mt-3 space-y-3", (busy || ratingBusy) && "opacity-70 pointer-events-none")}>
           <StatusButtons currentStatus={status} onStatusChange={handleStatusChange} />
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Rate:</span>
+            <RatingSelect value={rating ?? null} onChange={handleRate} size="sm" />
+          </div>
         </div>
+
         <div className="border-t border-slate-200 mt-4 pt-3 flex items-center justify-between">
           <AvatarStack count={(ev as any).friendsGoing ?? 5} size="sm" />
           <Link to={`/event/${ev.id}`} className="text-blue-600 hover:underline text-sm">
