@@ -38,12 +38,19 @@ namespace EventRecommender.Controllers.Api
                 .Include(e => e.Organizer)
                 .ToListAsync();
 
+            // avg ratings for these ids (single query)
+            var avgRatings = await _db.UserEventInteractions.AsNoTracking()
+                .Where(i => ids.Contains(i.EventId) && i.Rating.HasValue)
+                .GroupBy(i => i.EventId)
+                .Select(g => new { EventId = g.Key, Avg = g.Average(x => x.Rating!.Value) })
+                .ToDictionaryAsync(x => x.EventId, x => (double?)x.Avg);
+
             // Preserve model ranking order
             var order = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
 
             var dto = events
                 .OrderBy(e => order.TryGetValue(e.EventId, out var idx) ? idx : int.MaxValue)
-                .Select(e => new EventDto(e))
+                .Select(e => new EventDto(e, avgRatings.TryGetValue(e.EventId, out var a) ? a : null))
                 .ToList();
 
             return Ok(dto);
@@ -59,8 +66,9 @@ namespace EventRecommender.Controllers.Api
             public string Category { get; init; } = "";
             public string Venue { get; init; } = "";
             public string Organizer { get; init; } = "";
+            public double? AvgRating { get; init; }
 
-            public EventDto(Models.Event e)
+            public EventDto(Models.Event e, double? avgRating)
             {
                 Id = e.EventId;
                 Title = e.Title;
@@ -70,6 +78,7 @@ namespace EventRecommender.Controllers.Api
                 Category = e.Category?.Name ?? "";
                 Venue = e.Venue?.Name ?? "";
                 Organizer = e.Organizer?.Name ?? "";
+                AvgRating = avgRating;
             }
         }
     }

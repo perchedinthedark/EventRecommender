@@ -12,6 +12,7 @@ export type EventDto = {
   venue?: string;
   organizer?: string;
   friendsGoing?: number;
+  avgRating?: number | null; // NEW: average across users
 };
 
 export type TrendingCategoryBlock = {
@@ -33,6 +34,7 @@ function mapEvent(e: any): EventDto {
     venue: e.Venue ?? e.venue ?? "",
     organizer: e.Organizer ?? e.organizer ?? "",
     friendsGoing: e.FriendsGoing ?? e.friendsGoing,
+    avgRating: e.AvgRating ?? e.avgRating ?? null,
   };
 }
 function mapTrending(res: any): TrendingResponse {
@@ -55,102 +57,74 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    // Try to surface useful identity errors (password policy, duplicate email, etc.)
-    let bodyText = "";
-    try {
-      bodyText = await res.text();
-      try {
-        const j = JSON.parse(bodyText);
-        const msg = j?.message || j?.error || j?.errors?.join?.(" | ") || bodyText;
-        throw new Error(msg || `${res.status} ${res.statusText}`);
-      } catch {
-        throw new Error(bodyText || `${res.status} ${res.statusText}`);
-      }
-    } catch {
-      throw new Error(`${res.status} ${res.statusText}`);
-    }
+    let text = "";
+    try { text = await res.text(); } catch {}
+    try { const j = JSON.parse(text); throw new Error(j?.message || j?.error || j?.errors?.join?.(" | ") || text || `${res.status} ${res.statusText}`); }
+    catch { throw new Error(text || `${res.status} ${res.statusText}`); }
   }
   return (await res.json()) as T;
 }
 
 export const api = {
   async getRecs(topN = 6): Promise<EventDto[]> {
-    try {
-      const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`);
-      return (raw ?? []).map(mapEvent);
-    } catch {
-      return [];
-    }
+    try { const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`); return (raw ?? []).map(mapEvent); }
+    catch { return []; }
   },
   async getTrending(perList = 6, categoriesToShow = 2): Promise<TrendingResponse> {
     const raw = await http<any>(`${BASE}/api/trending?perList=${perList}&categoriesToShow=${categoriesToShow}`);
     return mapTrending(raw);
   },
+  /*async getTrendingByCategory(categoryId: number, topN = 50): Promise<{ categoryId: number; categoryName: string; events: EventDto[] }> {
+    const raw = await http<any>(`${BASE}/api/trending/by-category?categoryId=${categoryId}&topN=${topN}`);
+    return { categoryId: raw.categoryId, categoryName: raw.categoryName, events: (raw.events ?? []).map(mapEvent) };
+  },*/
   async getMyInteraction(eventId: number): Promise<MyInteraction> {
     return await http<MyInteraction>(`${BASE}/api/events/${eventId}/me`);
   },
   async setStatus(eventId: number, status: StatusType): Promise<MyInteraction> {
-    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/status`, {
-      method: "POST",
-      body: JSON.stringify({ status }),
-    });
+    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/status`, { method: "POST", body: JSON.stringify({ status }) });
   },
   async setRating(eventId: number, rating: number): Promise<MyInteraction> {
-    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/rating`, {
-      method: "POST",
-      body: JSON.stringify({ rating }),
-    });
+    return await http<MyInteraction>(`${BASE}/api/events/${eventId}/rating`, { method: "POST", body: JSON.stringify({ rating }) });
   },
   async getEvent(eventId: number): Promise<EventDto> {
     const raw = await http<any>(`${BASE}/api/events/${eventId}`);
     return mapEvent(raw);
   },
+  async getSaved(status: "Interested" | "Going"): Promise<EventDto[]> {
+    const raw = await http<any[]>(`${BASE}/api/events/mine?status=${encodeURIComponent(status)}`);
+    return (raw ?? []).map(mapEvent);
+  },
+   async getCategories(): Promise<{ id: number; name: string }[]> {
+    return await http(`${BASE}/api/categories`);
+  },
+
+  async getTrendingByCategory(categoryId: number, topN = 50): Promise<{ categoryId: number; categoryName: string; events: EventDto[] }> {
+    const raw = await http<any>(`${BASE}/api/trending/by-category?categoryId=${categoryId}&topN=${topN}`);
+    return { categoryId: raw.categoryId, categoryName: raw.categoryName, events: (raw.events ?? []).map(mapEvent) };
+  },
 
   telemetry: {
-    async click(eventId: number) {
-      return await http(`${BASE}/api/telemetry/clicks`, { method: "POST", body: JSON.stringify({ eventId }) });
-    },
-    async dwell(eventId: number, dwellMs: number) {
-      return await http(`${BASE}/api/telemetry/dwell`, { method: "POST", body: JSON.stringify({ eventId, dwellMs }) });
-    },
+    async click(eventId: number) { return await http(`${BASE}/api/telemetry/clicks`, { method: "POST", body: JSON.stringify({ eventId }) }); },
+    async dwell(eventId: number, dwellMs: number) { return await http(`${BASE}/api/telemetry/dwell`, { method: "POST", body: JSON.stringify({ eventId, dwellMs }) }); },
   },
 
   auth: {
-    async register(email: string, password: string) {
-      return await http(`${BASE}/api/auth/register`, { method: "POST", body: JSON.stringify({ email, password }) });
-    },
-    async login(email: string, password: string) {
-      return await http(`${BASE}/api/auth/login`, { method: "POST", body: JSON.stringify({ email, password }) });
-    },
-    async logout() {
-      return await http(`${BASE}/api/auth/logout`, { method: "POST", body: "{}" });
-    },
-    async me(): Promise<{ id: string; userName: string; email: string }> {
-      return await http(`${BASE}/api/auth/me`);
-    },
+    async register(email: string, password: string) { return await http(`${BASE}/api/auth/register`, { method: "POST", body: JSON.stringify({ email, password }) }); },
+    async login(email: string, password: string) { return await http(`${BASE}/api/auth/login`, { method: "POST", body: JSON.stringify({ email, password }) }); },
+    async logout() { return await http(`${BASE}/api/auth/logout`, { method: "POST", body: "{}" }); },
+    async me(): Promise<{ id: string; userName: string; email: string }> { return await http(`${BASE}/api/auth/me`); },
   },
 
   social: {
-    async follow(followeeId: string) {
-      return await http(`${BASE}/api/social/follow`, { method: "POST", body: JSON.stringify({ followeeId }) });
-    },
-    async unfollow(followeeId: string) {
-      return await http(`${BASE}/api/social/unfollow`, { method: "POST", body: JSON.stringify({ followeeId }) });
-    },
-    async following(): Promise<{ id: string; userName: string; email: string }[]> {
-      return await http(`${BASE}/api/social/following`);
-    },
-    async followers(): Promise<{ id: string; userName: string; email: string }[]> {
-      return await http(`${BASE}/api/social/followers`);
-    },
-    async friendsGoing(eventId: number): Promise<{ count: number }> {
-      return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`);
-    },
+    async follow(followeeId: string) { return await http(`${BASE}/api/social/follow`, { method: "POST", body: JSON.stringify({ followeeId }) }); },
+    async unfollow(followeeId: string) { return await http(`${BASE}/api/social/unfollow`, { method: "POST", body: JSON.stringify({ followeeId }) }); },
+    async following(): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/social/following`); },
+    async followers(): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/social/followers`); },
+    async friendsGoing(eventId: number): Promise<{ count: number }> { return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`); },
   },
 
   users: {
-    async search(q: string): Promise<{ id: string; userName: string; email: string }[]> {
-      return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`);
-    },
-  },
+    async search(q: string): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`); },
+  }
 };

@@ -1,23 +1,32 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
 
 type UserLite = { id: string; userName: string; email: string };
 
 export default function PeoplePage() {
+  const nav = useNavigate();
+
   const [me, setMe] = useState<UserLite | null>(null);
   const [following, setFollowing] = useState<UserLite[]>([]);
   const [followers, setFollowers] = useState<UserLite[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserLite[]>([]);
   const [busy, setBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function refreshLists() {
-    const [f1, f2] = await Promise.all([
-      api.social.following().catch(() => [] as UserLite[]),
-      api.social.followers().catch(() => [] as UserLite[]),
-    ]);
-    setFollowing(f1);
-    setFollowers(f2);
+    try {
+      const [f1, f2] = await Promise.all([
+        api.social.following().catch(() => [] as UserLite[]),
+        api.social.followers().catch(() => [] as UserLite[]),
+      ]);
+      setFollowing(f1);
+      setFollowers(f2);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load people.");
+    }
   }
 
   useEffect(() => {
@@ -26,14 +35,16 @@ export default function PeoplePage() {
   }, []);
 
   async function search() {
-    setResults([]);
     const term = query.trim();
-    if (!term) return;
+    if (!term) { setResults([]); return; }
+    setSearching(true);
     try {
       const found = await api.users.search(term);
       setResults(found);
     } catch {
       setResults([]);
+    } finally {
+      setSearching(false);
     }
   }
 
@@ -44,9 +55,7 @@ export default function PeoplePage() {
       await api.social.follow(id);
       await refreshLists();
       if (query.trim()) await search();
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function unfollow(id: string) {
@@ -56,45 +65,72 @@ export default function PeoplePage() {
       await api.social.unfollow(id);
       await refreshLists();
       if (query.trim()) await search();
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
+
+  const Card = ({ u, right }: { u: UserLite; right?: React.ReactNode }) => (
+    <li className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div>
+        <div className="font-medium text-slate-900">{u.userName ?? u.email}</div>
+        <div className="text-sm text-slate-600">{u.email}</div>
+      </div>
+      {right}
+    </li>
+  );
 
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
-      <div className="max-w-[1000px] mx-auto px-4 py-8">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-lg p-6">
-          <h1 className="text-2xl font-semibold mb-4 text-slate-900">People</h1>
-          {!me && <div className="text-slate-600 mb-4">Log in to follow people.</div>}
-
-          <div className="flex gap-2 mb-8">
-            <input
-              className="flex-1 bg-slate-50 text-slate-900 placeholder-slate-500 border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
-              placeholder="Search people"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-            />
-            <button onClick={search} className="px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
-              Search
-            </button>
+      {/* Header */}
+      <nav className="px-4 py-4 border-b border-slate-200 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+        <div className="max-w-[1100px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => nav(-1)} className="text-blue-600 hover:underline">← Back</button>
+            <strong className="text-lg text-slate-900">People</strong>
           </div>
+          {me && <span className="text-sm text-slate-600">Signed in as {me.userName ?? me.email}</span>}
+        </div>
+      </nav>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section className="border border-slate-200 rounded-xl p-4">
-              <h2 className="text-lg font-semibold mb-3 text-slate-900">Following</h2>
-              <ul className="space-y-2">
-                {following.length === 0 && <li className="text-slate-500">You’re not following anyone yet.</li>}
-                {following.map((u) => (
-                  <li
-                    key={u.id}
-                    className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-white"
-                  >
-                    <div>
-                      <div className="font-medium">{u.userName ?? u.email}</div>
-                      <div className="text-sm text-slate-600">{u.email}</div>
-                    </div>
+      {/* Content */}
+      <main className="max-w-[1100px] mx-auto px-4 py-8">
+        {!!error && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Search bar */}
+        <div className="mb-6 flex items-center gap-3">
+          <input
+            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 placeholder-slate-500
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            placeholder="Search people"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && search()}
+          />
+          <button
+            onClick={search}
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+            disabled={searching}
+          >
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </div>
+
+        {/* Two columns */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 mb-10">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Following</h2>
+            <ul className="space-y-2">
+              {following.length === 0 && (
+                <li className="text-slate-500">You’re not following anyone yet.</li>
+              )}
+              {following.map((u) => (
+                <Card
+                  key={u.id}
+                  u={u}
+                  right={
                     <button
                       onClick={() => unfollow(u.id)}
                       className="text-red-600 hover:underline disabled:opacity-60"
@@ -102,28 +138,25 @@ export default function PeoplePage() {
                     >
                       Unfollow
                     </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
+                  }
+                />
+              ))}
+            </ul>
+          </section>
 
-            <section className="border border-slate-200 rounded-xl p-4">
-              <h2 className="text-lg font-semibold mb-3 text-slate-900">Followers</h2>
-              <ul className="space-y-2">
-                {followers.length === 0 && <li className="text-slate-500">No one follows you yet.</li>}
-                {followers.map((u) => {
-                  const iFollow = following.some((f) => f.id === u.id);
-                  return (
-                    <li
-                      key={u.id}
-                      className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-white"
-                    >
-                      <div>
-                        <div className="font-medium">{u.userName ?? u.email}</div>
-                        <div className="text-sm text-slate-600">{u.email}</div>
-                      </div>
-                      {iFollow ? (
-                        <span className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">Following</span>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Followers</h2>
+            <ul className="space-y-2">
+              {followers.length === 0 && <li className="text-slate-500">No followers yet.</li>}
+              {followers.map((u) => {
+                const iFollow = following.some((f) => f.id === u.id);
+                return (
+                  <Card
+                    key={u.id}
+                    u={u}
+                    right={
+                      iFollow ? (
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">Following</span>
                       ) : (
                         <button
                           onClick={() => follow(u.id)}
@@ -132,53 +165,51 @@ export default function PeoplePage() {
                         >
                           Follow back
                         </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          </div>
-
-          <div className="mt-8">
-            <h2 className="text-lg font-semibold mb-2 text-slate-900">Results</h2>
-            <ul className="space-y-2">
-              {results.length === 0 && <li className="text-slate-500">No results</li>}
-              {results.map((u) => {
-                const iFollow = following.some((f) => f.id === u.id);
-                return (
-                  <li
-                    key={u.id}
-                    className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-white"
-                  >
-                    <div>
-                      <div className="font-medium">{u.userName ?? u.email}</div>
-                      <div className="text-sm text-slate-600">{u.email}</div>
-                    </div>
-                    {iFollow ? (
-                      <button
-                        onClick={() => unfollow(u.id)}
-                        className="text-red-600 hover:underline disabled:opacity-60"
-                        disabled={busy}
-                      >
-                        Unfollow
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => follow(u.id)}
-                        className="text-blue-600 hover:underline disabled:opacity-60"
-                        disabled={busy}
-                      >
-                        Follow
-                      </button>
-                    )}
-                  </li>
+                      )
+                    }
+                  />
                 );
               })}
             </ul>
-          </div>
+          </section>
         </div>
-      </div>
+
+        {/* Results */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">Results</h2>
+          <ul className="space-y-2">
+            {results.length === 0 && <li className="text-slate-500">No results</li>}
+            {results.map((u) => {
+              const iFollow = following.some((f) => f.id === u.id);
+              return (
+                <li key={u.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div>
+                    <div className="font-medium text-slate-900">{u.userName ?? u.email}</div>
+                    <div className="text-sm text-slate-600">{u.email}</div>
+                  </div>
+                  {iFollow ? (
+                    <button
+                      onClick={() => unfollow(u.id)}
+                      className="text-red-600 hover:underline disabled:opacity-60"
+                      disabled={busy}
+                    >
+                      Unfollow
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => follow(u.id)}
+                      className="text-blue-600 hover:underline disabled:opacity-60"
+                      disabled={busy}
+                    >
+                      Follow
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      </main>
     </div>
   );
 }

@@ -58,56 +58,84 @@ namespace EventRecommender.Services
             return ids;
         }
 
+        // NOTE: categoriesToShow <= 0  ==> return ALL categories
         public async Task<(List<int> overall, Dictionary<int, List<int>> byCategory)> GetTrendingForUserAsync(string? userId, int perList, int categoriesToShow = 2)
         {
             var overall = await GetTrendingOverallAsync(perList);
 
-            // pick user's top categories (simple sum of weights from interactions, all-time)
+            // Load all categories up-front
+            var allCategories = await _db.Categories.AsNoTracking()
+                .Select(c => c.CategoryId)
+                .ToListAsync();
+
             var byCategory = new Dictionary<int, List<int>>();
-            if (!string.IsNullOrEmpty(userId))
+
+            // If user asked for "all categories" (<=0) or user has no signal, fill every category.
+            if (categoriesToShow <= 0 || string.IsNullOrEmpty(userId))
             {
-                var my = await _db.UserEventInteractions.AsNoTracking()
-                    .Where(i => i.UserId == userId)
-                    .Select(i => new { i.EventId, i.Status, i.Rating })
-                    .ToListAsync();
+                foreach (var catId in allCategories)
+                    byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
+                return (overall, byCategory);
+            }
 
-                if (my.Count > 0)
+            // Otherwise, pick the user's top categories (existing behavior)
+            var my = await _db.UserEventInteractions.AsNoTracking()
+                .Where(i => i.UserId == userId)
+                .Select(i => new { i.EventId, i.Status, i.Rating })
+                .ToListAsync();
+
+            if (my.Count == 0)
+            {
+                // No signal → fall back to ALL categories
+                foreach (var catId in allCategories)
+                    byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
+                return (overall, byCategory);
+            }
+
+            var ev = await _db.Events.AsNoTracking()
+                .Where(e => my.Select(m => m.EventId).Contains(e.EventId))
+                .Select(e => new { e.EventId, e.CategoryId })
+                .ToListAsync();
+
+            var catWeights = new Dictionary<int, float>();
+            foreach (var m in my)
+            {
+                var catId = ev.FirstOrDefault(x => x.EventId == m.EventId)?.CategoryId;
+                if (catId == null) continue;
+
+                float w = Math.Max(
+                    m.Status == InteractionStatus.Interested ? 0.7f :
+                    m.Status == InteractionStatus.Going ? 1.0f : 0f,
+                    m.Rating.HasValue ? (m.Rating!.Value switch
+                    {
+                        <= 1 => 0.4f,
+                        2 => 0.55f,
+                        3 => 0.7f,
+                        4 => 0.85f,
+                        _ => 1.0f
+                    }) : 0f);
+
+                if (w <= 0) continue;
+                catWeights.TryGetValue(catId.Value, out var cur);
+                catWeights[catId.Value] = cur + w;
+            }
+
+            var chosen = catWeights
+                .OrderByDescending(kv => kv.Value)
+                .Take(Math.Max(1, categoriesToShow))
+                .Select(kv => kv.Key)
+                .ToList();
+
+            foreach (var catId in chosen)
+                byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
+
+            // Also add any categories with zero user weight if caller asked for more than we have
+            if (chosen.Count < categoriesToShow)
+            {
+                foreach (var catId in allCategories)
                 {
-                    var ev = await _db.Events.AsNoTracking()
-                        .Where(e => my.Select(m => m.EventId).Contains(e.EventId))
-                        .Select(e => new { e.EventId, e.CategoryId })
-                        .ToListAsync();
-
-                    var catWeights = new Dictionary<int, float>();
-                    foreach (var m in my)
-                    {
-                        var catId = ev.FirstOrDefault(x => x.EventId == m.EventId)?.CategoryId;
-                        if (catId == null) continue;
-
-                        float w = Math.Max(
-                            m.Status == InteractionStatus.Interested ? 0.7f :
-                            m.Status == InteractionStatus.Going ? 1.0f : 0f,
-                            m.Rating.HasValue ? (m.Rating!.Value switch
-                            {
-                                <= 1 => 0.4f,
-                                2 => 0.55f,
-                                3 => 0.7f,
-                                4 => 0.85f,
-                                _ => 1.0f
-                            }) : 0f);
-
-                        if (w <= 0) continue;
-                        catWeights.TryGetValue(catId.Value, out var cur);
-                        catWeights[catId.Value] = cur + w;
-                    }
-
-                    foreach (var catId in catWeights
-                        .OrderByDescending(kv => kv.Value)
-                        .Take(Math.Max(1, categoriesToShow))
-                        .Select(kv => kv.Key))
-                    {
-                        byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
-                    }
+                    if (chosen.Contains(catId)) continue;
+                    byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
                 }
             }
 
@@ -120,13 +148,10 @@ namespace EventRecommender.Services
             var now = DateTime.UtcNow;
             var cutoff = now.AddDays(-WINDOW_DAYS);
 
-            // basic event info
             var events = await _db.Events.AsNoTracking()
                 .Select(e => new { e.EventId, e.CategoryId, e.DateTime })
                 .ToListAsync();
-            var eDict = events.ToDictionary(e => e.EventId, e => e);
 
-            // clicks (30d)
             var clicks = await _db.EventClicks.AsNoTracking()
                 .Where(c => c.ClickedAt >= cutoff)
                 .ToListAsync();
@@ -134,33 +159,30 @@ namespace EventRecommender.Services
                 .GroupBy(c => c.EventId)
                 .ToDictionary(g => g.Key, g => new { Cnt = g.Count(), Dwell = g.Sum(x => (double)(x.DwellMs ?? 0) / 2000.0) });
 
-            // interactions (30d)
             var inters = await _db.UserEventInteractions.AsNoTracking()
                 .Where(i => i.Timestamp >= cutoff)
                 .ToListAsync();
             var interByEvent = inters.GroupBy(i => i.EventId).ToDictionary(g => g.Key, g => g.ToList());
 
-            // global rating prior (30d)
             var allRatings = inters.Where(i => i.Rating.HasValue).Select(i => i.Rating!.Value).ToList();
-            var priorMean = allRatings.Count > 0 ? allRatings.Average() : 3.5; // neutral-ish
-            const double priorStrength = 3.0; // pseudo-count
+            var priorMean = allRatings.Count > 0 ? allRatings.Average() : 3.5;
+            const double priorStrength = 3.0;
 
             double Recency(DateTime startUtc)
             {
-                var daysOld = Math.Max(0.0, (now - startUtc.ToUniversalTime()).TotalDays);
-                return Math.Exp(-daysOld / 14.0); // 2-week half-life-ish
+                var daysOld = Math.Max(0.0, (DateTime.UtcNow - startUtc.ToUniversalTime()).TotalDays);
+                return Math.Exp(-daysOld / 14.0);
             }
 
             double UpcomingBoost(DateTime startUtc)
             {
-                var daysTo = (startUtc - now).TotalDays;
+                var daysTo = (startUtc - DateTime.UtcNow).TotalDays;
                 if (daysTo < 0) return 0.0;
                 if (daysTo > UPCOMING_SOON_DAYS) return Math.Exp(-(daysTo - UPCOMING_SOON_DAYS) / 14.0);
-                return 1.0; // strong boost if within soon window
+                return 1.0;
             }
 
             var scores = new Dictionary<int, double>();
-
             foreach (var e in events)
             {
                 clicksByEvent.TryGetValue(e.EventId, out var c);
@@ -171,10 +193,8 @@ namespace EventRecommender.Services
                 var rList = li?.Where(x => x.Rating.HasValue).Select(x => (double)x.Rating!.Value).ToList() ?? new List<double>();
                 var n = rList.Count;
                 var avg = n > 0 ? rList.Average() : priorMean;
-                // Bayesian smoothing to avoid small-n spikes
                 var bayes = ((priorStrength * priorMean) + (n * avg)) / (priorStrength + n);
 
-                // combine (weights: tweak later as needed)
                 var score =
                       0.6 * Math.Sqrt(c?.Cnt ?? 0)
                     + 0.6 * (c?.Dwell ?? 0.0)

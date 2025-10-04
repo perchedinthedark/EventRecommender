@@ -14,7 +14,7 @@ namespace EventRecommender.Controllers.Api
         private readonly AppDbContext _db;
         public EventsApiController(AppDbContext db) { _db = db; }
 
-        // POST /api/events/{id}/status { status: "Interested" | "Going" }
+        // POST /api/events/{id}/status
         [HttpPost("{id:int}/status"), Authorize, IgnoreAntiforgeryToken]
         public async Task<IActionResult> SetStatus(int id, [FromBody] StatusDto body)
         {
@@ -35,7 +35,7 @@ namespace EventRecommender.Controllers.Api
             return Ok(new { ok = true, status = parsed.ToString() });
         }
 
-        // POST /api/events/{id}/rating { rating: 1..5 }
+        // POST /api/events/{id}/rating
         [HttpPost("{id:int}/rating"), Authorize, IgnoreAntiforgeryToken]
         public async Task<IActionResult> SetRating(int id, [FromBody] RatingDto body)
         {
@@ -71,8 +71,7 @@ namespace EventRecommender.Controllers.Api
             return Ok(new { status, rating });
         }
 
-
-        // GET /api/events/{id}
+        // GET /api/events/{id} (includes AvgRating)
         [HttpGet("{id:int}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetEvent(int id)
@@ -81,6 +80,11 @@ namespace EventRecommender.Controllers.Api
                 .Include(x => x.Category).Include(x => x.Venue).Include(x => x.Organizer)
                 .FirstOrDefaultAsync(x => x.EventId == id);
             if (e == null) return NotFound();
+
+            double? avgRating = await _db.UserEventInteractions.AsNoTracking()
+                .Where(i => i.EventId == id && i.Rating.HasValue)
+                .Select(i => (double?)i.Rating)
+                .AverageAsync();
 
             return Ok(new
             {
@@ -91,12 +95,59 @@ namespace EventRecommender.Controllers.Api
                 location = e.Location,
                 category = e.Category?.Name ?? "",
                 venue = e.Venue?.Name ?? "",
-                organizer = e.Organizer?.Name ?? ""
+                organizer = e.Organizer?.Name ?? "",
+                avgRating
             });
         }
 
+        // NEW: GET /api/events/mine?status=Interested|Going
+        [HttpGet("mine"), Authorize]
+        public async Task<IActionResult> Mine([FromQuery] string status, [FromQuery] int topN = 200)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+            if (!Enum.TryParse<InteractionStatus>(status, true, out var parsed) || parsed == InteractionStatus.None)
+                return BadRequest("status must be Interested or Going");
+
+            var eventIds = await _db.UserEventInteractions.AsNoTracking()
+                .Where(i => i.UserId == userId && i.Status == parsed)
+                .OrderByDescending(i => i.Timestamp)
+                .Select(i => i.EventId)
+                .Take(topN)
+                .ToListAsync();
+
+            var avgRatings = await _db.UserEventInteractions.AsNoTracking()
+                .Where(i => eventIds.Contains(i.EventId) && i.Rating.HasValue)
+                .GroupBy(i => i.EventId)
+                .Select(g => new { EventId = g.Key, Avg = g.Average(x => x.Rating!.Value) })
+                .ToDictionaryAsync(x => x.EventId, x => (double?)x.Avg);
+
+            var events = await _db.Events.AsNoTracking()
+                .Where(e => eventIds.Contains(e.EventId))
+                .Include(e => e.Category).Include(e => e.Venue).Include(e => e.Organizer)
+                .ToListAsync();
+
+            var order = eventIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+            var dto = events.OrderBy(e => order[e.EventId])
+                .Select(e => new
+                {
+                    id = e.EventId,
+                    title = e.Title,
+                    description = e.Description,
+                    dateTime = e.DateTime,
+                    location = e.Location,
+                    category = e.Category!.Name,
+                    venue = e.Venue!.Name,
+                    organizer = e.Organizer!.Name,
+                    avgRating = avgRatings.TryGetValue(e.EventId, out var a) ? a : null
+                }).ToList();
+
+            return Ok(dto);
+        }
 
         public record StatusDto(string Status);
         public record RatingDto(int Rating);
     }
 }
+

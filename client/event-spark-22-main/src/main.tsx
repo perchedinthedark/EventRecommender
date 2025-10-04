@@ -7,6 +7,8 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import PeoplePage from "@/pages/PeoplePage";
 import RecsPage from "@/pages/RecsPage";
+import CategoryTrendingPage from "@/pages/TrendingPage";
+import SavedPage from "@/pages/SavedPage";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -19,6 +21,8 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/people" element={<PeoplePage />} />
         <Route path="/recs" element={<RecsPage />} />
+        <Route path="/category/:id" element={<CategoryTrendingPage />} />
+        <Route path="/saved/:mode" element={<SavedPage />} />
       </Routes>
     </HashRouter>
   </React.StrictMode>
