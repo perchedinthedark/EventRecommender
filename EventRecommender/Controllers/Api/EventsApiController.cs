@@ -71,7 +71,7 @@ namespace EventRecommender.Controllers.Api
             return Ok(new { status, rating });
         }
 
-        // GET /api/events/{id} (includes AvgRating)
+        // GET /api/events/{id} (includes AvgRating + ImageUrl)
         [HttpGet("{id:int}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetEvent(int id)
@@ -96,11 +96,12 @@ namespace EventRecommender.Controllers.Api
                 category = e.Category?.Name ?? "",
                 venue = e.Venue?.Name ?? "",
                 organizer = e.Organizer?.Name ?? "",
-                avgRating
+                imageUrl = e.ImageUrl,     // <<—
+                avgRating                   // <<—
             });
         }
 
-        // NEW: GET /api/events/mine?status=Interested|Going
+        // GET /api/events/mine?status=Interested|Going  (returns ImageUrl + AvgRating)
         [HttpGet("mine"), Authorize]
         public async Task<IActionResult> Mine([FromQuery] string status, [FromQuery] int topN = 200)
         {
@@ -128,8 +129,11 @@ namespace EventRecommender.Controllers.Api
                 .Include(e => e.Category).Include(e => e.Venue).Include(e => e.Organizer)
                 .ToListAsync();
 
+            // keep user’s recency order
             var order = eventIds.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
-            var dto = events.OrderBy(e => order[e.EventId])
+
+            var dto = events
+                .OrderBy(e => order[e.EventId])
                 .Select(e => new
                 {
                     id = e.EventId,
@@ -137,11 +141,13 @@ namespace EventRecommender.Controllers.Api
                     description = e.Description,
                     dateTime = e.DateTime,
                     location = e.Location,
-                    category = e.Category!.Name,
-                    venue = e.Venue!.Name,
-                    organizer = e.Organizer!.Name,
-                    avgRating = avgRatings.TryGetValue(e.EventId, out var a) ? a : null
-                }).ToList();
+                    category = e.Category?.Name ?? "",
+                    venue = e.Venue?.Name ?? "",
+                    organizer = e.Organizer?.Name ?? "",
+                    imageUrl = e.ImageUrl,                                             // <<—
+                    avgRating = avgRatings.TryGetValue(e.EventId, out var a) ? a : null // <<—
+                })
+                .ToList();
 
             return Ok(dto);
         }
@@ -150,4 +156,3 @@ namespace EventRecommender.Controllers.Api
         public record RatingDto(int Rating);
     }
 }
-

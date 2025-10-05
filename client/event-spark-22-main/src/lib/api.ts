@@ -1,3 +1,4 @@
+// client/src/lib/api.ts
 const BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
 export type StatusType = "None" | "Interested" | "Going";
@@ -12,7 +13,8 @@ export type EventDto = {
   venue?: string;
   organizer?: string;
   friendsGoing?: number;
-  avgRating?: number | null; // NEW: average across users
+  avgRating?: number | null;
+  imageUrl?: string | null;
 };
 
 export type TrendingCategoryBlock = {
@@ -22,6 +24,9 @@ export type TrendingCategoryBlock = {
 };
 export type TrendingResponse = { overall: EventDto[]; byCategory: TrendingCategoryBlock[] };
 export type MyInteraction = { status: StatusType; rating?: number | null };
+
+// NEW: shared user shape used by social & search
+export type UserLite = { id: string; userName?: string; displayName?: string | null; email: string };
 
 function mapEvent(e: any): EventDto {
   return {
@@ -35,6 +40,7 @@ function mapEvent(e: any): EventDto {
     organizer: e.Organizer ?? e.organizer ?? "",
     friendsGoing: e.FriendsGoing ?? e.friendsGoing,
     avgRating: e.AvgRating ?? e.avgRating ?? null,
+    imageUrl: e.ImageUrl ?? e.imageUrl ?? null,
   };
 }
 function mapTrending(res: any): TrendingResponse {
@@ -59,25 +65,29 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let text = "";
     try { text = await res.text(); } catch {}
-    try { const j = JSON.parse(text); throw new Error(j?.message || j?.error || j?.errors?.join?.(" | ") || text || `${res.status} ${res.statusText}`); }
-    catch { throw new Error(text || `${res.status} ${res.statusText}`); }
+    try {
+      const j = text ? JSON.parse(text) : null;
+      throw new Error(j?.message || j?.error || j?.errors?.join?.(" | ") || text || `${res.status} ${res.statusText}`);
+    } catch {
+      throw new Error(text || `${res.status} ${res.statusText}`);
+    }
   }
   return (await res.json()) as T;
 }
 
 export const api = {
   async getRecs(topN = 6): Promise<EventDto[]> {
-    try { const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`); return (raw ?? []).map(mapEvent); }
-    catch { return []; }
+    try {
+      const raw = await http<any[]>(`${BASE}/api/recs?topN=${topN}`);
+      return (raw ?? []).map(mapEvent);
+    } catch {
+      return [];
+    }
   },
   async getTrending(perList = 6, categoriesToShow = 2): Promise<TrendingResponse> {
     const raw = await http<any>(`${BASE}/api/trending?perList=${perList}&categoriesToShow=${categoriesToShow}`);
     return mapTrending(raw);
   },
-  /*async getTrendingByCategory(categoryId: number, topN = 50): Promise<{ categoryId: number; categoryName: string; events: EventDto[] }> {
-    const raw = await http<any>(`${BASE}/api/trending/by-category?categoryId=${categoryId}&topN=${topN}`);
-    return { categoryId: raw.categoryId, categoryName: raw.categoryName, events: (raw.events ?? []).map(mapEvent) };
-  },*/
   async getMyInteraction(eventId: number): Promise<MyInteraction> {
     return await http<MyInteraction>(`${BASE}/api/events/${eventId}/me`);
   },
@@ -95,10 +105,9 @@ export const api = {
     const raw = await http<any[]>(`${BASE}/api/events/mine?status=${encodeURIComponent(status)}`);
     return (raw ?? []).map(mapEvent);
   },
-   async getCategories(): Promise<{ id: number; name: string }[]> {
+  async getCategories(): Promise<{ id: number; name: string }[]> {
     return await http(`${BASE}/api/categories`);
   },
-
   async getTrendingByCategory(categoryId: number, topN = 50): Promise<{ categoryId: number; categoryName: string; events: EventDto[] }> {
     const raw = await http<any>(`${BASE}/api/trending/by-category?categoryId=${categoryId}&topN=${topN}`);
     return { categoryId: raw.categoryId, categoryName: raw.categoryName, events: (raw.events ?? []).map(mapEvent) };
@@ -110,21 +119,26 @@ export const api = {
   },
 
   auth: {
-    async register(email: string, password: string) { return await http(`${BASE}/api/auth/register`, { method: "POST", body: JSON.stringify({ email, password }) }); },
+    // UPDATED: send displayName (free-form public name)
+    async register(email: string, password: string, displayName?: string) {
+      return await http(`${BASE}/api/auth/register`, { method: "POST", body: JSON.stringify({ email, password, displayName }) });
+    },
     async login(email: string, password: string) { return await http(`${BASE}/api/auth/login`, { method: "POST", body: JSON.stringify({ email, password }) }); },
     async logout() { return await http(`${BASE}/api/auth/logout`, { method: "POST", body: "{}" }); },
-    async me(): Promise<{ id: string; userName: string; email: string }> { return await http(`${BASE}/api/auth/me`); },
+    async me(): Promise<{ id: string; userName?: string; displayName?: string | null; email: string }> {
+      return await http(`${BASE}/api/auth/me`);
+    },
   },
 
   social: {
     async follow(followeeId: string) { return await http(`${BASE}/api/social/follow`, { method: "POST", body: JSON.stringify({ followeeId }) }); },
     async unfollow(followeeId: string) { return await http(`${BASE}/api/social/unfollow`, { method: "POST", body: JSON.stringify({ followeeId }) }); },
-    async following(): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/social/following`); },
-    async followers(): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/social/followers`); },
+    async following(): Promise<UserLite[]> { return await http(`${BASE}/api/social/following`); },
+    async followers(): Promise<UserLite[]> { return await http(`${BASE}/api/social/followers`); },
     async friendsGoing(eventId: number): Promise<{ count: number }> { return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`); },
   },
 
   users: {
-    async search(q: string): Promise<{ id: string; userName: string; email: string }[]> { return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`); },
+    async search(q: string): Promise<UserLite[]> { return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`); },
   }
 };

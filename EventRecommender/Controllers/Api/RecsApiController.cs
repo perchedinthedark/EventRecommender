@@ -66,6 +66,7 @@ namespace EventRecommender.Controllers.Api
             public string Category { get; init; } = "";
             public string Venue { get; init; } = "";
             public string Organizer { get; init; } = "";
+            public string? ImageUrl { get; init; }
             public double? AvgRating { get; init; }
 
             public EventDto(Models.Event e, double? avgRating)
@@ -78,6 +79,7 @@ namespace EventRecommender.Controllers.Api
                 Category = e.Category?.Name ?? "";
                 Venue = e.Venue?.Name ?? "";
                 Organizer = e.Organizer?.Name ?? "";
+                ImageUrl = e.ImageUrl;
                 AvgRating = avgRating;
             }
         }

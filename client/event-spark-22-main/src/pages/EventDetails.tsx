@@ -1,3 +1,4 @@
+// client/src/pages/EventDetails.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, EventDto } from "@/lib/api";
@@ -76,15 +77,25 @@ export default function EventDetails() {
       </nav>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden">
-        <div className="h-44 bg-gradient-to-b from-blue-400 to-blue-300" />
-        <div className="p-6">
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2">{ev.title}</h1>
+        {/* Banner with image if available */}
+        {ev.imageUrl ? (
+          <div className="h-44 overflow-hidden">
+            <img src={ev.imageUrl} alt={ev.title} className="h-full w-full object-cover" />
+          </div>
+        ) : (
+          <div className="h-44 bg-gradient-to-b from-blue-400 to-blue-300" />
+        )}
 
-          {!!rating && (
-            <div className="mb-3">
-              <RatingStars rating={rating} size="md" />
-            </div>
-          )}
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-2xl font-semibold text-slate-900 mb-2">{ev.title}</h1>
+            {/* Average rating from all users */}
+            {typeof ev.avgRating === "number" && (
+              <div className="shrink-0">
+                <RatingStars rating={ev.avgRating} size="md" />
+              </div>
+            )}
+          </div>
 
           <div className="space-y-1.5 text-[14px] text-slate-600 mb-4">
             <div className="flex items-center gap-2">
@@ -116,10 +127,13 @@ export default function EventDetails() {
           </div>
 
           <div className="mt-4 text-sm text-slate-600">
-            {typeof friendsGoing === "number" && <span>👥 {friendsGoing} of your friends are going</span>}
+            {typeof friendsGoing === "number" && (
+              <span>👥 {friendsGoing} of your friends are going</span>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

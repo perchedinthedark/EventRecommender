@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
-type UserLite = { id: string; userName: string; email: string };
+type UserLite = { id: string; userName?: string; displayName?: string; email?: string };
+
+const nameOf = (u: UserLite) => u.displayName || u.userName || "User";
 
 export default function PeoplePage() {
   const nav = useNavigate();
@@ -41,8 +43,6 @@ export default function PeoplePage() {
     try {
       const found = await api.users.search(term);
       setResults(found);
-    } catch {
-      setResults([]);
     } finally {
       setSearching(false);
     }
@@ -70,28 +70,23 @@ export default function PeoplePage() {
 
   const Card = ({ u, right }: { u: UserLite; right?: React.ReactNode }) => (
     <li className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div>
-        <div className="font-medium text-slate-900">{u.userName ?? u.email}</div>
-        <div className="text-sm text-slate-600">{u.email}</div>
-      </div>
+      <div className="font-medium text-slate-900">{nameOf(u)}</div>
       {right}
     </li>
   );
 
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
-      {/* Header */}
       <nav className="px-4 py-4 border-b border-slate-200 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
         <div className="max-w-[1100px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => nav(-1)} className="text-blue-600 hover:underline">← Back</button>
             <strong className="text-lg text-slate-900">People</strong>
           </div>
-          {me && <span className="text-sm text-slate-600">Signed in as {me.userName ?? me.email}</span>}
+          {me && <span className="text-sm text-slate-600">Signed in as {nameOf(me)}</span>}
         </div>
       </nav>
 
-      {/* Content */}
       <main className="max-w-[1100px] mx-auto px-4 py-8">
         {!!error && (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -99,7 +94,6 @@ export default function PeoplePage() {
           </div>
         )}
 
-        {/* Search bar */}
         <div className="mb-6 flex items-center gap-3">
           <input
             className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 placeholder-slate-500
@@ -118,14 +112,11 @@ export default function PeoplePage() {
           </button>
         </div>
 
-        {/* Two columns */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 mb-10">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Following</h2>
             <ul className="space-y-2">
-              {following.length === 0 && (
-                <li className="text-slate-500">You’re not following anyone yet.</li>
-              )}
+              {following.length === 0 && <li className="text-slate-500">You’re not following anyone yet.</li>}
               {following.map((u) => (
                 <Card
                   key={u.id}
@@ -174,7 +165,6 @@ export default function PeoplePage() {
           </section>
         </div>
 
-        {/* Results */}
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-lg font-semibold text-slate-900">Results</h2>
           <ul className="space-y-2">
@@ -183,10 +173,7 @@ export default function PeoplePage() {
               const iFollow = following.some((f) => f.id === u.id);
               return (
                 <li key={u.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                  <div>
-                    <div className="font-medium text-slate-900">{u.userName ?? u.email}</div>
-                    <div className="text-sm text-slate-600">{u.email}</div>
-                  </div>
+                  <div className="font-medium text-slate-900">{nameOf(u)}</div>
                   {iFollow ? (
                     <button
                       onClick={() => unfollow(u.id)}

@@ -22,16 +22,34 @@ namespace EventRecommender.Controllers.Api
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
                 return BadRequest("email/password required");
 
-            var user = new ApplicationUser { UserName = dto.Email, Email = dto.Email };
+            // Safe internal handle to satisfy Identity username rules
+            var safeHandle = dto.Email.Split('@')[0]; // or generate something unique
+
+            // Ensure uniqueness for username
+            var baseHandle = safeHandle;
+            int n = 1;
+            while (await _um.FindByNameAsync(safeHandle) != null)
+                safeHandle = $"{baseHandle}{++n}";
+
+            var user = new ApplicationUser
+            {
+                UserName = safeHandle,               // SAFE internal handle
+                Email = dto.Email,
+                DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName)
+                    ? dto.UserName ?? baseHandle     // fallback from old field names, if client sends them
+                    : dto.DisplayName.Trim(),
+                EmailConfirmed = true
+            };
+
             var res = await _um.CreateAsync(user, dto.Password);
             if (!res.Succeeded)
                 return BadRequest(string.Join(" | ", res.Errors.Select(e => e.Description)));
 
             await _sm.SignInAsync(user, isPersistent: true);
 
-            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName, displayName = user.DisplayName });
         }
-        public record RegisterDto(string Email, string Password);
+        public record RegisterDto(string Email, string Password, string? DisplayName, string? UserName); // UserName kept for backward compat
 
         [HttpPost("login")]
         [IgnoreAntiforgeryToken]
@@ -46,7 +64,7 @@ namespace EventRecommender.Controllers.Api
             var res = await _sm.PasswordSignInAsync(user, dto.Password, isPersistent: true, lockoutOnFailure: false);
             if (!res.Succeeded) return Unauthorized();
 
-            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName, displayName = user.DisplayName });
         }
         public record LoginDto(string Email, string Password);
 
@@ -67,7 +85,7 @@ namespace EventRecommender.Controllers.Api
             var user = await _um.GetUserAsync(User);
             if (user == null) return Unauthorized();
 
-            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName });
+            return Ok(new { id = user.Id, email = user.Email, userName = user.UserName, displayName = user.DisplayName });
         }
     }
 }

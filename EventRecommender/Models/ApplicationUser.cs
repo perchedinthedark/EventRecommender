@@ -7,6 +7,8 @@ namespace EventRecommender.Models
         // Custom
         public string? Location { get; set; }
 
+        public string? DisplayName { get; set; }
+
         // Navs
         public ICollection<UserEventInteraction> Interactions { get; set; } = new List<UserEventInteraction>();
         public ICollection<Friendship> Following { get; set; } = new List<Friendship>();

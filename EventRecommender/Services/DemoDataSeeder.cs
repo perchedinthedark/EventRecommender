@@ -22,18 +22,43 @@ namespace EventRecommender.Services
         {
             var now = DateTime.UtcNow;
 
-            // Users (idempotent)
-            var emails = new[] { "alice@example.com", "bob@example.com", "carol@example.com" };
-            foreach (var e in emails)
+           
+            // ---------- Users (idempotent + set DisplayName) ----------
+            var usersSeed = new (string Email, string Display)[]
             {
-                if (await _um.FindByEmailAsync(e) == null)
-                    await _um.CreateAsync(new ApplicationUser { UserName = e, Email = e, EmailConfirmed = true }, "Demo!12345");
+    ("alice@example.com", "Alice"),
+    ("bob@example.com",   "Bob"),
+    ("carol@example.com", "Carol"),
+            };
+
+            foreach (var (email, display) in usersSeed)
+            {
+                var u = await _um.FindByEmailAsync(email);
+                if (u == null)
+                {
+                    var safeHandle = email.Split('@')[0];
+                    var baseHandle = safeHandle;
+                    int n = 1;
+                    while (await _um.FindByNameAsync(safeHandle) != null)
+                        safeHandle = $"{baseHandle}{++n}";
+
+                    u = new ApplicationUser { UserName = safeHandle, Email = email, EmailConfirmed = true, DisplayName = display };
+                    await _um.CreateAsync(u, "Demo!12345");
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(u.DisplayName)) { u.DisplayName = display; }
+                    // Optional: if legacy had UserName = Email, normalize to a safe handle once.
+                    if (u.UserName == email) { u.UserName = email.Split('@')[0]; }
+                    await _um.UpdateAsync(u);
+                }
             }
+
             var alice = (await _um.FindByEmailAsync("alice@example.com"))!;
             var bob = (await _um.FindByEmailAsync("bob@example.com"))!;
             var carol = (await _um.FindByEmailAsync("carol@example.com"))!;
 
-            // Taxonomy (idempotent)
+            // ---------- Taxonomy (idempotent) ----------
             async Task<int> EnsureCategory(string name)
             {
                 var c = await _db.Categories.FirstOrDefaultAsync(x => x.Name == name);
@@ -69,10 +94,13 @@ namespace EventRecommender.Services
             var oCity = await EnsureOrganizer("CityCulture");
             var oGuild = await EnsureOrganizer("DevGuild");
 
-            // Events (idempotent by Title)
-            async Task AddEvent(string title, string desc, int daysFromNow, string loc, int catId, int venueId, int orgId)
+            // ---------- Events (idempotent by Title) ----------
+            async Task AddOrUpdateEvent(
+                string title, string desc, int daysFromNow, string loc,
+                int catId, int venueId, int orgId, string? imageUrl = null)
             {
-                if (!await _db.Events.AnyAsync(e => e.Title == title))
+                var e = await _db.Events.FirstOrDefaultAsync(x => x.Title == title);
+                if (e == null)
                 {
                     _db.Events.Add(new Event
                     {
@@ -82,36 +110,47 @@ namespace EventRecommender.Services
                         Location = loc,
                         CategoryId = catId,
                         VenueId = venueId,
-                        OrganizerId = orgId
+                        OrganizerId = orgId,
+                        ImageUrl = imageUrl
                     });
                     await _db.SaveChangesAsync();
                 }
+                else
+                {
+                    // If the row exists but ImageUrl is empty and we have one, backfill
+                    if (string.IsNullOrWhiteSpace(e.ImageUrl) && !string.IsNullOrWhiteSpace(imageUrl))
+                    {
+                        e.ImageUrl = imageUrl;
+                        await _db.SaveChangesAsync();
+                    }
+                }
             }
 
-            // Existing 5 (ensure present)
-            await AddEvent("Jazz Night", "Smooth sets", +3, "City", catMusic, vHall, oLive);
-            await AddEvent("Rock Fest", "Guitars!", +10, "City", catMusic, vHall, oLive);
-            await AddEvent("AI Summit", "Talks+expo", +5, "Tech", catTech, vHub, oCode);
-            await AddEvent("Hack Night", "Code jam", +1, "Tech", catTech, vHub, oCode);
-            await AddEvent("Derby Match", "Big game", +7, "Stad", catSport, vStad, oAth);
+            // Example placeholder images (swap for your own anytime)
+            // Using picsum is fine for demo; these calls are just URLs stored in DB.
+            await AddOrUpdateEvent("Jazz Night", "Smooth sets", +3, "City", catMusic, vHall, oLive, "https://picsum.photos/seed/jazz/1200/600");
+            await AddOrUpdateEvent("Rock Fest", "Guitars!", +10, "City", catMusic, vHall, oLive, "https://picsum.photos/seed/rock/1200/600");
+            await AddOrUpdateEvent("AI Summit", "Talks+expo", +5, "Tech", catTech, vHub, oCode, "https://picsum.photos/seed/ai/1200/600");
+            await AddOrUpdateEvent("Hack Night", "Code jam", +1, "Tech", catTech, vHub, oCode, "https://picsum.photos/seed/hack/1200/600");
+            await AddOrUpdateEvent("Derby Match", "Big game", +7, "Stad", catSport, vStad, oAth, "https://picsum.photos/seed/derby/1200/600");
 
-            // New (~7 more)
-            await AddEvent("Symphony Gala", "Orchestra evening", +14, "City", catMusic, vHall, oCity);
-            await AddEvent("Indie Jam", "Local bands", +4, "Park", catMusic, vPark, oLive);
-            await AddEvent("Cloud Expo", "Cloud & DevOps", +12, "Tech", catTech, vCenter, oGuild);
-            await AddEvent("AI Workshop", "Hands-on ML", +8, "Tech", catTech, vHub, oCode);
-            await AddEvent("Data Night", "Talks + networking", +2, "Tech", catTech, vCenter, oGuild);
-            await AddEvent("City Run 10K", "Community race", +9, "Park", catSport, vPark, oAth);
-            await AddEvent("Championship Final", "Season climax", +20, "Stad", catSport, vStad, oAth);
+            await AddOrUpdateEvent("Symphony Gala", "Orchestra evening", +14, "City", catMusic, vHall, oCity, "https://picsum.photos/seed/symphony/1200/600");
+            await AddOrUpdateEvent("Indie Jam", "Local bands", +4, "Park", catMusic, vPark, oLive, "https://picsum.photos/seed/indie/1200/600");
+            await AddOrUpdateEvent("Cloud Expo", "Cloud & DevOps", +12, "Tech", catTech, vCenter, oGuild, "https://picsum.photos/seed/cloud/1200/600");
+            await AddOrUpdateEvent("AI Workshop", "Hands-on ML", +8, "Tech", catTech, vHub, oCode, "https://picsum.photos/seed/workshop/1200/600");
+            await AddOrUpdateEvent("Data Night", "Talks + networking", +2, "Tech", catTech, vCenter, oGuild, "https://picsum.photos/seed/data/1200/600");
+            await AddOrUpdateEvent("City Run 10K", "Community race", +9, "Park", catSport, vPark, oAth, "https://picsum.photos/seed/run/1200/600");
+            await AddOrUpdateEvent("Championship Final", "Season climax", +20, "Stad", catSport, vStad, oAth, "https://picsum.photos/seed/final/1200/600");
 
-            // Refresh cache
+            // Refresh events cache after inserts/updates
             var events = await _db.Events.AsNoTracking().ToListAsync();
 
-            // Interaction helper (idempotent)
+            // ---------- Interactions (idempotent) ----------
             void Intx(ApplicationUser u, string title, InteractionStatus s, int? rating = null)
             {
                 var e = events.FirstOrDefault(x => x.Title == title);
                 if (e == null) return;
+
                 if (!_db.UserEventInteractions.Any(x => x.UserId == u.Id && x.EventId == e.EventId))
                 {
                     _db.UserEventInteractions.Add(new UserEventInteraction
@@ -153,7 +192,7 @@ namespace EventRecommender.Services
             Intx(carol, "Symphony Gala", InteractionStatus.Interested, 4);
             Intx(carol, "Rock Fest", InteractionStatus.Interested, 4);
 
-            // Some cross-category extras
+            // Cross-category extras
             Intx(alice, "City Run 10K", InteractionStatus.Interested, 3);
             Intx(alice, "Championship Final", InteractionStatus.Interested, 4);
             Intx(bob, "AI Workshop", InteractionStatus.Interested, 3);
@@ -162,12 +201,12 @@ namespace EventRecommender.Services
 
             await _db.SaveChangesAsync();
 
-            // Seed a few click/dwell logs so metrics/trending have data (idempotent-ish)
+            // ---------- Click + Dwell samples (idempotent-ish) ----------
             void Click(ApplicationUser u, string title, int dwellMs, int minutesAgo)
             {
                 var e = events.FirstOrDefault(x => x.Title == title);
                 if (e == null) return;
-                // add anyway; it's okay if duplicates exist for demo
+
                 _db.EventClicks.Add(new EventClick
                 {
                     UserId = u.Id,
@@ -186,7 +225,9 @@ namespace EventRecommender.Services
 
             await _db.SaveChangesAsync();
 
-            return (await _db.Users.CountAsync(), await _db.Events.CountAsync(), await _db.UserEventInteractions.CountAsync());
+            return (await _db.Users.CountAsync(),
+                    await _db.Events.CountAsync(),
+                    await _db.UserEventInteractions.CountAsync());
         }
     }
 }

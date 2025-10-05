@@ -58,7 +58,7 @@ namespace EventRecommender.Controllers.Api
 
             var users = await _db.Users
                 .Where(u => ids.Contains(u.Id))
-                .Select(u => new { id = u.Id, userName = u.UserName, email = u.Email })
+                .Select(u => new { id = u.Id, userName = u.UserName, displayName = u.DisplayName, email = u.Email })
                 .ToListAsync();
 
             return Ok(users);
@@ -78,7 +78,7 @@ namespace EventRecommender.Controllers.Api
 
             var users = await _db.Users
                 .Where(u => ids.Contains(u.Id))
-                .Select(u => new { id = u.Id, userName = u.UserName, email = u.Email })
+                .Select(u => new { id = u.Id, userName = u.UserName, displayName = u.DisplayName, email = u.Email })
                 .ToListAsync();
 
             return Ok(users);

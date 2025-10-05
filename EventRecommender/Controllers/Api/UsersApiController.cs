@@ -21,7 +21,7 @@ namespace EventRecommender.Controllers.Api
         [HttpGet("search")]
         public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int limit = 12)
         {
-            var uid = UID();
+            var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (uid is null) return Unauthorized();
 
             q = (q ?? string.Empty).Trim();
@@ -29,24 +29,26 @@ namespace EventRecommender.Controllers.Api
 
             limit = Math.Clamp(limit, 1, 25);
 
-            // Case-insensitive contains using LIKE; search username OR email
             var results = await _db.Users
                 .Where(u =>
                     u.Id != uid &&
-                    (EF.Functions.Like(u.UserName!, $"%{q}%") ||
+                    (EF.Functions.Like(u.DisplayName!, $"%{q}%") ||
+                     EF.Functions.Like(u.UserName!, $"%{q}%") ||
                      EF.Functions.Like(u.Email!, $"%{q}%")))
-                .OrderBy(u => u.UserName)
+                .OrderBy(u => u.DisplayName ?? u.UserName ?? u.Email)
                 .ThenBy(u => u.Email)
                 .Take(limit)
                 .Select(u => new
                 {
                     id = u.Id,
                     userName = u.UserName,
+                    displayName = u.DisplayName, // NEW
                     email = u.Email
                 })
                 .ToListAsync();
 
             return Ok(results);
         }
+
     }
 }

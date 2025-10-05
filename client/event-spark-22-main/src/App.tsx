@@ -1,3 +1,4 @@
+// client/src/App.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, EventDto } from "@/lib/api";
@@ -32,7 +33,9 @@ function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCo
 
 export default function App() {
   const nav = useNavigate();
-  const [me, setMe] = useState<{ id: string; userName: string; email: string } | null>(null);
+
+  // FIX: align with /api/auth/me (displayName optional; userName optional)
+  const [me, setMe] = useState<{ id: string; userName?: string; displayName?: string | null; email: string } | null>(null);
 
   const [recs, setRecs] = useState<EventDto[] | null>(null);
   const [trendingOverall, setTrendingOverall] = useState<EventDto[] | null>(null);
@@ -103,8 +106,11 @@ export default function App() {
           <Link to="/saved/going" className="text-blue-600 hover:underline">Saved: Going</Link>
           {me ? (
             <>
-              <span className="text-slate-600">Hi, {me.userName ?? me.email}</span>
-              <button className="text-slate-600 hover:text-slate-900" onClick={() => api.auth.logout().then(() => location.reload())}>
+              <span className="text-slate-600">Hi, {me.displayName ?? me.userName ?? me.email}</span>
+              <button
+                className="text-slate-600 hover:text-slate-900"
+                onClick={() => api.auth.logout().then(() => location.reload())}
+              >
                 Logout
               </button>
             </>
@@ -147,7 +153,7 @@ export default function App() {
   const recsFiltered = filterListByName(recs);
   const trendingFiltered = filterListByName(trendingOverall);
 
-  // NEW: for category blocks below—hide all other categories when a filter is active
+  // Only show the selected category block when a filter is active
   const visibleCats = useMemo(
     () => activeFilter ? cats.filter(c => eq(c.name, activeFilter)) : cats,
     [cats, activeFilter]
@@ -213,7 +219,7 @@ export default function App() {
           {isLoading ? <Grid items={null} /> : <Grid items={trendingFiltered} />}
         </section>
 
-        {/* CATEGORY BLOCKS — only the selected category is shown when filtered */}
+        {/* CATEGORY BLOCKS */}
         {visibleCats.map(block => (
           <section key={block.id} className="mb-10">
             <div className="flex items-center justify-between mb-4">
@@ -238,4 +244,3 @@ export default function App() {
     </div>
   );
 }
-
