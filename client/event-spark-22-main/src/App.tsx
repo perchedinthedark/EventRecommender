@@ -1,19 +1,10 @@
-// client/src/App.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, EventDto } from "@/lib/api";
+import { api, EventDto, TrendingCategoryBlock } from "@/lib/api";
 import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
 import EmptyState from "@/components/EmptyState";
 import { SectionHeader } from "@/components/SectionHeader";
-import { cn } from "@/lib/utils";
-
-type CatBlock = {
-  id: number;
-  name: string;
-  items: EventDto[] | null; // null = loading, [] = empty
-  expanded: boolean;
-};
 
 function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCount?: number }) {
   if (items === null) {
@@ -34,17 +25,13 @@ function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCo
 export default function App() {
   const nav = useNavigate();
 
-  // FIX: align with /api/auth/me (displayName optional; userName optional)
+  // Matches /api/auth/me (displayName optional; userName optional)
   const [me, setMe] = useState<{ id: string; userName?: string; displayName?: string | null; email: string } | null>(null);
 
   const [recs, setRecs] = useState<EventDto[] | null>(null);
   const [trendingOverall, setTrendingOverall] = useState<EventDto[] | null>(null);
-
-  const [cats, setCats] = useState<CatBlock[]>([]);
+  const [trendingByCat, setTrendingByCat] = useState<TrendingCategoryBlock[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Active category bubble; "" = All
-  const [activeFilter, setActiveFilter] = useState<string>("");
 
   useEffect(() => {
     api.auth.me().then(setMe).catch(() => setMe(null));
@@ -52,6 +39,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
+        // Home: 6 items each; only top-2 personalized category blocks
         const [r, t] = await Promise.all([
           api.getRecs(6).catch(() => [] as EventDto[]),
           api.getTrending(6, 2),
@@ -59,21 +47,7 @@ export default function App() {
         if (cancelled) return;
         setRecs(r);
         setTrendingOverall(t.overall);
-
-        const allCats = await api.getCategories();
-        if (cancelled) return;
-
-        setCats(allCats.map(c => ({ id: c.id, name: c.name, items: null, expanded: false })));
-
-        await Promise.all(allCats.map(async (c) => {
-          try {
-            const pack = await api.getTrendingByCategory(c.id, 6);
-            if (cancelled) return;
-            setCats(prev => prev.map(b => b.id === c.id ? { ...b, items: pack.events } : b));
-          } catch {
-            if (!cancelled) setCats(prev => prev.map(b => b.id === c.id ? { ...b, items: [] } : b));
-          }
-        }));
+        setTrendingByCat(t.byCategory);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to load data.");
       }
@@ -81,17 +55,6 @@ export default function App() {
 
     return () => { cancelled = true; };
   }, []);
-
-  async function toggleExpand(catId: number) {
-    setCats(prev => prev.map(b => b.id === catId ? { ...b, expanded: !b.expanded } : b));
-    const blk = cats.find(b => b.id === catId);
-    if (blk && !blk.expanded) {
-      try {
-        const pack = await api.getTrendingByCategory(catId, 12);
-        setCats(prev => prev.map(b => b.id === catId ? { ...b, items: pack.events, expanded: true } : b));
-      } catch { /* noop */ }
-    }
-  }
 
   const header = (
     <nav className="px-4 py-4 border-b border-slate-200 mb-8 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
@@ -102,6 +65,8 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4 text-sm">
           <Link to="/people" className="text-blue-600 hover:underline">People</Link>
+          <Link to="/recs" className="text-blue-600 hover:underline">Recommendations</Link>
+          <Link to="/trending" className="text-blue-600 hover:underline">Trending</Link>
           <Link to="/saved/interested" className="text-blue-600 hover:underline">Saved: Interested</Link>
           <Link to="/saved/going" className="text-blue-600 hover:underline">Saved: Going</Link>
           {me ? (
@@ -136,67 +101,13 @@ export default function App() {
     );
   }
 
-  const isLoading = recs === null || trendingOverall === null;
-
-  // Bubble names from fetched categories
-  const bubbleNames = useMemo(() => cats.map(c => c.name), [cats]);
-
-  // Helper
-  const eq = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
-
-  // Filter top sections by name
-  const filterListByName = (list: EventDto[] | null) => {
-    if (!list) return null;
-    if (!activeFilter) return list;
-    return list.filter(e => e.category && eq(String(e.category), activeFilter));
-  };
-  const recsFiltered = filterListByName(recs);
-  const trendingFiltered = filterListByName(trendingOverall);
-
-  // Only show the selected category block when a filter is active
-  const visibleCats = useMemo(
-    () => activeFilter ? cats.filter(c => eq(c.name, activeFilter)) : cats,
-    [cats, activeFilter]
-  );
+  const isLoading = recs === null || trendingOverall === null || trendingByCat === null;
 
   return (
     <div className="min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
       {header}
 
       <main className="max-w-[1200px] mx-auto px-4 pb-12">
-        {/* FILTER BUBBLES */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setActiveFilter("")}
-            className={cn(
-              "px-4 py-1.5 rounded-full text-sm border transition-colors",
-              activeFilter === ""
-                ? "bg-blue-600 text-white border-transparent"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-            )}
-          >
-            All
-          </button>
-          {bubbleNames.map((name) => {
-            const active = eq(activeFilter, name);
-            return (
-              <button
-                key={name}
-                onClick={() => setActiveFilter(active ? "" : name)}
-                className={cn(
-                  "px-4 py-1.5 rounded-full text-sm border transition-colors",
-                  active
-                    ? "bg-blue-600 text-white border-transparent"
-                    : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"
-                )}
-                title={name}
-              >
-                {name}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Recommended */}
         <section className="mb-10">
           <SectionHeader
@@ -204,42 +115,34 @@ export default function App() {
             ctaLabel="See all recommendations"
             onCtaClick={() => nav("/recs")}
           />
-          {isLoading ? (
-            <Grid items={null} />
-          ) : (recsFiltered && recsFiltered.length > 0) ? (
-            <Grid items={recsFiltered} />
-          ) : (
-            <EmptyState title="No recommendations for this category yet." />
-          )}
+          {isLoading ? <Grid items={null} /> : <Grid items={recs!} />}
         </section>
 
         {/* Trending overall */}
         <section className="mb-10">
-          <SectionHeader title="Trending Now" />
-          {isLoading ? <Grid items={null} /> : <Grid items={trendingFiltered} />}
+          <SectionHeader
+            title="Trending Now"
+            ctaLabel="View full trending"
+            onCtaClick={() => nav("/trending")}
+          />
+          {isLoading ? <Grid items={null} /> : <Grid items={trendingOverall!} />}
         </section>
 
-        {/* CATEGORY BLOCKS */}
-        {visibleCats.map(block => (
-          <section key={block.id} className="mb-10">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[22px] font-semibold text-slate-900">
-                Trending in {block.name}
-              </h2>
-              <button
-                onClick={() => toggleExpand(block.id)}
-                className={cn(
-                  "text-sm rounded-full px-3 py-1 border transition-colors",
-                  block.expanded ? "bg-slate-100 border-slate-200 text-slate-800"
-                                  : "bg-white border-slate-200 text-blue-600 hover:bg-slate-50"
-                )}
-              >
-                {block.expanded ? "Collapse" : "Show more"}
-              </button>
-            </div>
-            <Grid items={block.items} loadingCount={block.expanded ? 12 : 6} />
-          </section>
-        ))}
+        {/* Top-2 personalized category blocks */}
+        {!isLoading && trendingByCat && trendingByCat.length > 0 && (
+          <>
+            {trendingByCat.map(block => (
+              <section key={block.categoryId} className="mb-10">
+                <SectionHeader
+                  title={`Trending in ${block.categoryName}`}
+                  ctaLabel="See more in Trending"
+                  onCtaClick={() => nav("/trending")}
+                />
+                <Grid items={block.events} />
+              </section>
+            ))}
+          </>
+        )}
       </main>
     </div>
   );
