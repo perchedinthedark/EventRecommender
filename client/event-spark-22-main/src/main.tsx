@@ -9,6 +9,7 @@ import PeoplePage from "@/pages/PeoplePage";
 import RecsPage from "@/pages/RecsPage";
 import TrendingPage from "@/pages/TrendingPage";
 import SavedPage from "@/pages/SavedPage";
+import SearchPage from "@/pages/SearchPage";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -23,6 +24,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/recs" element={<RecsPage />} />
         <Route path="/trending" element={<TrendingPage />} />
         <Route path="/saved/:mode" element={<SavedPage />} />
+        <Route path="/search" element={<SearchPage />} />
       </Routes>
     </HashRouter>
   </React.StrictMode>

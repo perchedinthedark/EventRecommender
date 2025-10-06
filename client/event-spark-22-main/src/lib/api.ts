@@ -138,6 +138,12 @@ export const api = {
     async friendsGoing(eventId: number): Promise<{ count: number }> { return await http(`${BASE}/api/social/friends-going?eventId=${eventId}`); },
   },
 
+  async search(q: string, topN = 50): Promise<EventDto[]> {
+    if (!q.trim()) return [];
+    const raw = await http<any[]>(`${BASE}/api/search?q=${encodeURIComponent(q)}&topN=${topN}`);
+    return (raw ?? []).map(mapEvent);
+  },
+
   users: {
     async search(q: string): Promise<UserLite[]> { return await http(`${BASE}/api/users/search?q=${encodeURIComponent(q)}`); },
   }

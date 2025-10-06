@@ -6,6 +6,7 @@ import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
 import EmptyState from "@/components/EmptyState";
 import { SectionHeader } from "@/components/SectionHeader";
+import SearchBand from "@/components/SearchBand";
 
 function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCount?: number }) {
   if (items === null) {
@@ -102,10 +103,10 @@ export default function App() {
             Trending
           </Link>
           <Link to="/saved/interested" className="text-blue-600 hover:underline">
-            Saved: Interested
+            Interested
           </Link>
           <Link to="/saved/going" className="text-blue-600 hover:underline">
-            Saved: Going
+            Going
           </Link>
           {me ? (
             <>
@@ -156,6 +157,9 @@ export default function App() {
       {header}
 
       <main className="max-w-[1200px] mx-auto px-4 pb-12">
+        {/* Global search band (non-focused on Home) */}
+        <SearchBand className="mb-8" />
+
         {/* Recommended */}
         <section className="mb-10">
           <SectionHeader
@@ -179,7 +183,7 @@ export default function App() {
             ctaLabel="View full trending"
             onCtaClick={() => nav("/trending")}
           />
-        {isLoading ? <Grid items={null} /> : <Grid items={trendingOverall!} />}
+          {isLoading ? <Grid items={null} /> : <Grid items={trendingOverall!} />}
         </section>
 
         {/* Personalized category blocks (guarded) */}

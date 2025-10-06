@@ -1,5 +1,4 @@
-// client/src/components/EventCard.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Calendar, MapPin } from "lucide-react";
 import { api, EventDto } from "@/lib/api";
 import { StatusButtons, EventStatus } from "./StatusButtons";
@@ -15,8 +14,12 @@ export default function EventCard({ ev }: { ev: EventDto }) {
   const [myRating, setMyRating] = useState<number | undefined>(undefined);
   const [ratingBusy, setRatingBusy] = useState(false);
 
+  // friends-going for the bubbles + label
+  const [friendsGoing, setFriendsGoing] = useState<number | null>(null);
+
   useEffect(() => {
     let ignore = false;
+
     api
       .getMyInteraction(ev.id)
       .then((m) => {
@@ -25,6 +28,12 @@ export default function EventCard({ ev }: { ev: EventDto }) {
         if (typeof m?.rating === "number") setMyRating(m.rating);
       })
       .catch(() => {});
+
+    api.social
+      .friendsGoing(ev.id)
+      .then((r) => !ignore && setFriendsGoing(r.count))
+      .catch(() => !ignore && setFriendsGoing(null));
+
     return () => {
       ignore = true;
     };
@@ -51,6 +60,13 @@ export default function EventCard({ ev }: { ev: EventDto }) {
       setRatingBusy(false);
     }
   }
+
+  const friendsLabel = useMemo(() => {
+    if (friendsGoing === null) return ""; // unauth/unknown → just show bubbles
+    if (friendsGoing <= 0) return "";
+    if (friendsGoing === 1) return "1 friend going";
+    return `${friendsGoing} friends going`;
+  }, [friendsGoing]);
 
   return (
     <div
@@ -106,7 +122,12 @@ export default function EventCard({ ev }: { ev: EventDto }) {
           {ev.organizer && <div className="text-slate-500">by {ev.organizer}</div>}
         </div>
 
-        <div className={cn("mt-3 space-y-3", (busy || ratingBusy) && "opacity-70 pointer-events-none")}>
+        <div
+          className={cn(
+            "mt-3 space-y-3",
+            (busy || ratingBusy) && "opacity-70 pointer-events-none"
+          )}
+        >
           <StatusButtons currentStatus={status} onStatusChange={handleStatusChange} />
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-600">Your rating:</span>
@@ -115,7 +136,12 @@ export default function EventCard({ ev }: { ev: EventDto }) {
         </div>
 
         <div className="border-t border-slate-200 mt-4 pt-3 flex items-center justify-between">
-          <AvatarStack count={(ev as any).friendsGoing ?? 5} size="sm" />
+          <div className="flex items-center gap-2 min-w-0">
+            <AvatarStack count={friendsGoing ?? 0} size="sm" />
+            {!!friendsLabel && (
+              <span className="truncate text-xs text-slate-600">{friendsLabel}</span>
+            )}
+          </div>
           <Link to={`/event/${ev.id}`} className="text-blue-600 hover:underline text-sm">
             Details →
           </Link>
@@ -124,5 +150,3 @@ export default function EventCard({ ev }: { ev: EventDto }) {
     </div>
   );
 }
-
-
