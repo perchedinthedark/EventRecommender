@@ -86,10 +86,7 @@ namespace EventRecommender.Services
 
             if (my.Count == 0)
             {
-                // No signal → fall back to ALL categories
-                foreach (var catId in allCategories)
-                    byCategory[catId] = await GetTrendingByCategoryAsync(catId, perList);
-                return (overall, byCategory);
+                return (overall, new Dictionary<int, List<int>>());
             }
 
             var ev = await _db.Events.AsNoTracking()
