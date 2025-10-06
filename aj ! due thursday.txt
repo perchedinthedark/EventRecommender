@@ -1,4 +1,0 @@
-update multiple
-submit/update - BR koji broji u bazi + update tog + svih ostalih polja
-
-field info msg za total num
