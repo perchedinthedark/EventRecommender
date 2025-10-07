@@ -12,6 +12,7 @@ import RatingSelect from "@/components/RatingSelect";
 export default function EventDetails() {
   const { id } = useParams<{ id: string }>();
   const eventId = useMemo(() => Number(id), [id]);
+
   const [ev, setEv] = useState<EventDto | null>(null);
   const [status, setStatus] = useState<EventStatus>("None");
   const [busy, setBusy] = useState(false);
@@ -62,78 +63,108 @@ export default function EventDetails() {
 
   if (!ev) {
     return (
-      <div className="max-w-[1000px] mx-auto px-4 py-6">
+      <div className="max-w-[1100px] mx-auto px-4 py-8">
         <SkeletonCard />
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1000px] mx-auto px-4 py-6">
+    <div className="max-w-[1100px] mx-auto px-4 py-8 text-white">
       <nav className="mb-4 text-sm">
-        <Link to="/" className="text-blue-600 hover:underline">
-          ← Back
-        </Link>
+        <Link to="/" className="text-sky-300 hover:text-sky-200">← Back</Link>
       </nav>
 
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden">
-        {/* Banner with image if available */}
-        {ev.imageUrl ? (
-          <div className="h-44 overflow-hidden">
-            <img src={ev.imageUrl} alt={ev.title} className="h-full w-full object-cover" />
-          </div>
-        ) : (
-          <div className="h-44 bg-gradient-to-b from-blue-400 to-blue-300" />
-        )}
+      <article className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_20px_60px_-25px_rgba(0,0,0,.6)] overflow-hidden">
+        {/* Banner */}
+        <header className="relative h-72 md:h-80">
+          {ev.imageUrl ? (
+            <img
+              src={ev.imageUrl}
+              alt={ev.title}
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/40 via-sky-500/40 to-purple-500/40" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/60" />
 
-        <div className="p-6">
-          <div className="flex items-start justify-between gap-4">
-            <h1 className="text-2xl font-semibold text-slate-900 mb-2">{ev.title}</h1>
-            {/* Average rating from all users */}
-            {typeof ev.avgRating === "number" && (
-              <div className="shrink-0">
-                <RatingStars rating={ev.avgRating} size="md" />
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1.5 text-[14px] text-slate-600 mb-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-500" />
-              <span>{new Date(ev.dateTime).toLocaleString()}</span>
-            </div>
-            {ev.location && (
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-slate-500" />
-                <span>{ev.location}</span>
-              </div>
-            )}
-            {ev.organizer && <div className="text-slate-500">by {ev.organizer}</div>}
-          </div>
-
-          {!!ev.description && (
-            <>
-              <h2 className="text-lg font-semibold text-slate-900 mb-1">About</h2>
-              <p className="text-slate-700 leading-7">{ev.description}</p>
-            </>
+          {/* Top-left: category */}
+          {ev.category && (
+            <span className="absolute top-4 left-4 inline-flex items-center rounded-full bg-black/40 text-white/95 border border-white/20 px-3 py-1 text-sm backdrop-blur">
+              {ev.category}
+            </span>
           )}
 
-          <div className={(busy || ratingBusy) ? "opacity-70 pointer-events-none mt-5" : "mt-5"}>
-            <StatusButtons currentStatus={status} onStatusChange={handleStatusChange} />
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-sm text-slate-600">Your rating:</span>
+          {/* Top-right: average rating */}
+          {typeof ev.avgRating === "number" && (
+            <div className="absolute top-4 right-4 rounded-full bg-black/40 border border-white/20 px-3 py-1 backdrop-blur">
+              <RatingStars rating={ev.avgRating} size="sm" />
+            </div>
+          )}
+        </header>
+
+        {/* Body */}
+        <div className="p-6 md:p-8">
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
+            {ev.title}
+          </h1>
+
+          {/* Meta */}
+          <ul className="space-y-1.5 text-slate-200/90 mb-6">
+            <li className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-slate-300" />
+              <span className="leading-6">
+                {new Date(ev.dateTime).toLocaleString()}
+              </span>
+            </li>
+            {!!ev.location && (
+              <li className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-slate-300" />
+                <span className="leading-6">{ev.location}</span>
+              </li>
+            )}
+            {!!ev.organizer && (
+              <li className="leading-6 text-slate-300">by {ev.organizer}</li>
+            )}
+          </ul>
+
+          {/* Description */}
+          {!!ev.description && (
+            <section className="mb-6">
+              <h2 className="text-lg font-semibold mb-2">About</h2>
+              <p className="leading-7 text-slate-200">{ev.description}</p>
+            </section>
+          )}
+
+          {/* Actions */}
+          <section
+            className={[
+              "mt-6 rounded-2xl border border-white/10 bg-white/5 p-4",
+              (busy || ratingBusy) ? "opacity-70 pointer-events-none" : "",
+            ].join(" ")}
+          >
+            <div className="mb-3">
+              <StatusButtons
+                currentStatus={status}
+                onStatusChange={handleStatusChange}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-300">Your rating:</span>
               <RatingSelect value={rating} onChange={handleRate} />
             </div>
-          </div>
+          </section>
 
-          <div className="mt-4 text-sm text-slate-600">
-            {typeof friendsGoing === "number" && (
-              <span>👥 {friendsGoing} of your friends are going</span>
-            )}
-          </div>
+          {/* Social hint */}
+          {typeof friendsGoing === "number" && (
+            <p className="mt-4 text-sm text-slate-300">
+              👥 {friendsGoing} {friendsGoing === 1 ? "friend is" : "friends are"} going
+            </p>
+          )}
         </div>
-      </div>
+      </article>
     </div>
   );
 }
-

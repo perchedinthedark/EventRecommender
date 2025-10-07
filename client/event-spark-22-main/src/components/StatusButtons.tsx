@@ -1,3 +1,4 @@
+// client/src/components/StatusButtons.tsx
 import { Check, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,40 +12,47 @@ interface StatusButtonsProps {
 }
 
 export function StatusButtons({ currentStatus, onStatusChange, className }: StatusButtonsProps) {
+  const isInterested = currentStatus === "Interested";
+  const isGoing = currentStatus === "Going";
+
+  // click again to turn it off
+  const toggleTo = (target: EventStatus) =>
+    onStatusChange(currentStatus === target ? "None" : target);
+
   return (
     <div className={cn("flex gap-3", className)}>
+      {/* Interested */}
       <Button
-        variant={currentStatus === "Interested" ? "default" : "outline"}
+        aria-pressed={isInterested}
         size="lg"
-        onClick={() => onStatusChange(currentStatus === "Interested" ? "None" : "Interested")}
+        onClick={() => toggleTo("Interested")}
         className={cn(
-          "flex items-center gap-2",
-          currentStatus === "Interested" 
-            ? "bg-primary hover:bg-primary-hover text-primary-foreground" 
-            : "border-primary text-primary hover:bg-primary-light"
+          "flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-medium transition-all",
+          "backdrop-blur-sm border",
+          isInterested
+            ? "bg-primary text-primary-foreground border-transparent shadow-[0_0_10px_rgba(37,99,235,.45)]"
+            : "bg-white/10 border-white/20 text-slate-200 hover:bg-white/15"
         )}
       >
-        <Heart className={cn(
-          "w-4 h-4",
-          currentStatus === "Interested" && "fill-current"
-        )} />
+        <Heart className={cn("w-4 h-4", isInterested && "fill-current")} />
         Interested
       </Button>
-      
+
+      {/* Going */}
       <Button
-        variant={currentStatus === "Going" ? "default" : "secondary"}
+        aria-pressed={isGoing}
         size="lg"
-        onClick={() => onStatusChange(currentStatus === "Going" ? "None" : "Going")}
+        onClick={() => toggleTo("Going")}
         className={cn(
-          "flex items-center gap-2",
-          currentStatus === "Going" 
-            ? "bg-success hover:bg-success/90 text-success-foreground" 
-            : "bg-secondary hover:bg-secondary-hover text-secondary-foreground"
+          "flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-medium transition-all",
+          "backdrop-blur-sm border",
+          isGoing
+            ? "bg-emerald-500 text-white border-transparent shadow-[0_0_10px_rgba(16,185,129,.5)]"
+            : "bg-white/10 border-white/20 text-slate-200 hover:bg-white/15"
         )}
-        disabled={currentStatus === "Going"}
       >
         <Check className="w-4 h-4" />
-        {currentStatus === "Going" ? "You're Going!" : "Going"}
+        {isGoing ? "You're Going!" : "Going"}
       </Button>
     </div>
   );

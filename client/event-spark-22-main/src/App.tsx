@@ -1,6 +1,5 @@
-// client/src/App.tsx
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api, EventDto, TrendingCategoryBlock } from "@/lib/api";
 import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
@@ -8,28 +7,24 @@ import EmptyState from "@/components/EmptyState";
 import { SectionHeader } from "@/components/SectionHeader";
 import SearchBand from "@/components/SearchBand";
 
-function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCount?: number }) {
+function Grid({
+  items,
+  loadingCount = 6,
+}: {
+  items: EventDto[] | null;
+  loadingCount?: number;
+}) {
   if (items === null) {
     return (
-      <div
-        className="grid gap-6"
-        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
-      >
-        {Array.from({ length: loadingCount }).map((_, i) => (
-          <SkeletonCard key={i} />
-        ))}
+      <div className="grid gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+        {Array.from({ length: loadingCount }).map((_, i) => <SkeletonCard key={i} />)}
       </div>
     );
   }
   if (items.length === 0) return <EmptyState title="Nothing to show yet." />;
   return (
-    <div
-      className="grid gap-6"
-      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
-    >
-      {items.map((ev) => (
-        <EventCard key={ev.id} ev={ev} />
-      ))}
+    <div className="grid gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+      {items.map((ev) => <EventCard key={ev.id} ev={ev} />)}
     </div>
   );
 }
@@ -37,7 +32,6 @@ function Grid({ items, loadingCount = 6 }: { items: EventDto[] | null; loadingCo
 export default function App() {
   const nav = useNavigate();
 
-  // Matches /api/auth/me shape (displayName optional; userName optional)
   const [me, setMe] = useState<{
     id: string;
     userName?: string;
@@ -52,120 +46,50 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
-      // who am I
       const user = await api.auth.me().catch(() => null);
       if (cancelled) return;
       setMe(user);
 
       try {
-        // Home: 6 items each; request up to 2 personalized category blocks
         const [r, t] = await Promise.all([
           api.getRecs(6).catch(() => [] as EventDto[]),
           api.getTrending(6, user ? 2 : 0),
         ]);
-
         if (cancelled) return;
-
         setRecs(r);
         setTrendingOverall(t.overall);
-
-        // DEFENSIVE: clamp to 2 categories even if API over-returns,
-        // and if not logged-in, keep empty.
         const cats = user ? (t.byCategory ?? []).slice(0, 2) : [];
         setPersonalBlocks(cats);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to load data.");
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  const header = (
-    <nav className="px-4 py-4 border-b border-slate-200 mb-8 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
-      <div className="max-w-[1200px] mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <strong className="text-lg text-slate-900">EventRecommender</strong>
-          <span className="text-slate-500">React preview</span>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          <Link to="/people" className="text-blue-600 hover:underline">
-            People
-          </Link>
-          <Link to="/recs" className="text-blue-600 hover:underline">
-            Recommendations
-          </Link>
-          <Link to="/trending" className="text-blue-600 hover:underline">
-            Trending
-          </Link>
-          <Link to="/saved/interested" className="text-blue-600 hover:underline">
-            Interested
-          </Link>
-          <Link to="/saved/going" className="text-blue-600 hover:underline">
-            Going
-          </Link>
-          {me ? (
-            <>
-              <span className="text-slate-600">
-                Hi, {me.displayName ?? me.userName ?? me.email}
-              </span>
-              <button
-                className="text-slate-600 hover:text-slate-900"
-                onClick={() => api.auth.logout().then(() => location.reload())}
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="text-blue-600 hover:underline">
-                Log in
-              </Link>
-              <Link to="/register" className="text-blue-600 hover:underline">
-                Register
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
-    </nav>
-  );
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[hsl(var(--background))]">
-        {header}
-        <div className="max-w-[1200px] mx-auto px-4">
-          <div className="text-red-600">Error: {error}</div>
-        </div>
-      </div>
-    );
-  }
-
   const isLoading = recs === null || trendingOverall === null || personalBlocks === null;
-
-  // SHOW CATEGORY BLOCKS ONLY WHEN: logged in AND we have some recs (user has signal) AND API gave us blocks
-  const canShowPersonalBlocks =
-    !!me && (recs?.length ?? 0) > 0 && (personalBlocks?.length ?? 0) > 0;
+  const canShowPersonalBlocks = !!me && (recs?.length ?? 0) > 0 && (personalBlocks?.length ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
-      {header}
+    <div className="min-h-screen app-deep text-slate-100">
+      <main className="max-w-[1200px] mx-auto px-4 pt-8 pb-12">
+        <div className="searchband-dark mb-8">
+          <SearchBand />
+        </div>
 
-      <main className="max-w-[1200px] mx-auto px-4 pb-12">
-        {/* Global search band (non-focused on Home) */}
-        <SearchBand className="mb-8" />
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-200">
+            {error}
+          </div>
+        )}
 
-        {/* Recommended */}
         <section className="mb-10">
           <SectionHeader
             title="Recommended for You"
             ctaLabel="See all recommendations"
             onCtaClick={() => nav("/recs")}
+            className="[&>h2]:text-white"
           />
           {isLoading ? (
             <Grid items={null} />
@@ -176,17 +100,16 @@ export default function App() {
           )}
         </section>
 
-        {/* Trending overall */}
         <section className="mb-10">
           <SectionHeader
             title="Trending Now"
             ctaLabel="View full trending"
             onCtaClick={() => nav("/trending")}
+            className="[&>h2]:text-white"
           />
-          {isLoading ? <Grid items={null} /> : <Grid items={trendingOverall!} />}
+        {isLoading ? <Grid items={null} /> : <Grid items={trendingOverall!} />}
         </section>
 
-        {/* Personalized category blocks (guarded) */}
         {canShowPersonalBlocks &&
           personalBlocks!.map((block) => (
             <section key={block.categoryId} className="mb-10">
@@ -194,6 +117,7 @@ export default function App() {
                 title={`Trending in ${block.categoryName}`}
                 ctaLabel="See more in Trending"
                 onCtaClick={() => nav("/trending")}
+                className="[&>h2]:text-white"
               />
               <Grid items={block.events} />
             </section>
