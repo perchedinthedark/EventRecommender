@@ -54,13 +54,11 @@
 
 /* ---------- SOFT NAVY GRADIENT + NOISE + DARK-THEME VARS ---------- */
 .app-sky {
-  /* switch to light-on-dark for anything inside this container */
   --foreground: 210 40% 96%;
   --card-foreground: 210 40% 96%;
   --muted-foreground: 210 18% 78%;
   --border: 0 0% 100%;
 
-  /* subtle navy gradient */
   background-image:
     radial-gradient(1200px 600px at 20% -10%, hsl(220 28% 24% / 0.40), transparent),
     radial-gradient(900px 500px at 90% 0%, hsl(220 25% 22% / 0.35), transparent),
@@ -84,14 +82,19 @@
 }
 
 @layer components {
+  /* card base (same utilities as your original) + extra shine via normal CSS */
   .card-surface {
-    /* was: bg-white/6 border-white/12 */
-    @apply bg-white/10 backdrop-blur-md border border-white/10 rounded-[24px]
-           shadow-[0_12px_30px_-15px_rgba(0,0,0,.6)] transition;
+    @apply bg-white/10 backdrop-blur-md border border-white/10 rounded-[24px] transition;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.06) inset,
+      0 12px 30px -15px rgba(0,0,0,.6);
   }
   .card-surface:hover {
-    /* was: border-white/16 */
-    @apply border-white/20 shadow-[0_20px_36px_-18px_rgba(0,0,0,.65)];
+    @apply border-white/20;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.12) inset,
+      0 20px 36px -18px rgba(0,0,0,.65),
+      0 0 24px -8px rgba(255,255,255,.08);
   }
 
   .btn-primary-modern {
@@ -113,15 +116,29 @@
     border-color: hsl(220 20% 92% / .34);
   }
 
- /* in src/index.css */
-.searchband-dark input[type="text"],
-.searchband-dark input[type="search"],
-.searchband-dark textarea { @apply bg-white/5 text-white placeholder-white/60 border border-white/10 rounded-xl; }
-.searchband-dark button { @apply bg-blue-500 text-white hover:bg-blue-400 rounded-xl; }
+  /* search band dark variant */
+  .searchband-dark input[type="text"],
+  .searchband-dark input[type="search"],
+  .searchband-dark textarea {
+    @apply bg-white/5 text-white placeholder-white/60 border border-white/10 rounded-xl;
+  }
+  .searchband-dark button {
+    @apply bg-blue-500 text-white hover:bg-blue-400 rounded-xl;
+  }
 
+  /* divider used inside cards */
+  .card-divider {
+    @apply w-full;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.15), rgba(255,255,255,.05));
+  }
+
+  /* avatar stack color helpers */
+  .bg-avatar-1 { background-color: hsl(var(--avatar-1)); }
+  .bg-avatar-2 { background-color: hsl(var(--avatar-2)); }
+  .bg-avatar-3 { background-color: hsl(var(--avatar-3)); }
+  .bg-avatar-4 { background-color: hsl(var(--avatar-4)); }
+  .bg-avatar-5 { background-color: hsl(var(--avatar-5)); }
 }
-
-
-
 
 

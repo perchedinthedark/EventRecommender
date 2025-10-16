@@ -36,10 +36,12 @@ namespace EventRecommender.Services.Email
 
             var msg = new MailMessage(from, to, subject, body)
             {
-                IsBodyHtml = false // plain text for simplicity
+                // We’re sending HTML now
+                IsBodyHtml = true
             };
 
             await _smtp.SendMailAsync(msg);
         }
     }
 }
+

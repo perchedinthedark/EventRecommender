@@ -51,9 +51,8 @@ export default function Header() {
           {/* Brand */}
           <Link to="/" className="flex items-baseline gap-2">
             <span className="text-lg font-semibold tracking-tight bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 bg-clip-text text-transparent">
-              EventRecommender
+              Eventualno
             </span>
-            <span className="text-xs text-slate-400">React preview</span>
           </Link>
 
           {/* Center nav */}

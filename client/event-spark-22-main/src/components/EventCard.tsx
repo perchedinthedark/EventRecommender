@@ -69,8 +69,9 @@ export default function EventCard({ ev }: { ev: EventDto }) {
   return (
     <div
       className={cn(
-        // glassy dark surface (uses utilities defined in index.css)
-        "card-surface overflow-hidden rounded-[24px]"
+        "card-surface overflow-hidden rounded-[24px]",
+        // subtle outer ring + hover pop
+        "ring-1 ring-white/12 hover:ring-white/25 transition"
       )}
     >
       {/* Banner */}
@@ -148,8 +149,11 @@ export default function EventCard({ ev }: { ev: EventDto }) {
               <span className="truncate text-xs text-white/70">{friendsLabel}</span>
             )}
           </div>
-          <Link to={`/event/${ev.id}`} className="text-blue-300 hover:text-blue-200 text-sm">
-            Details →
+          <Link
+            to={`/event/${ev.id}`}
+            className="text-orange-300 hover:text-orange-200 text-sm"
+          >
+            Details »
           </Link>
         </div>
       </div>
