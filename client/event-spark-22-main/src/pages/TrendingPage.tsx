@@ -184,7 +184,11 @@ export default function TrendingPage() {
           className="mb-8"
         />
 
-        {/* FILTER BUBBLES */}
+        {/* Overall trending (expanded) */}
+        <section className="mb-10">
+          <SectionHeader title="Trending Now" className="[&>h2]:text-white" />
+
+            {/* FILTER BUBBLES */}
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveFilter("")}
@@ -216,10 +220,6 @@ export default function TrendingPage() {
             );
           })}
         </div>
-
-        {/* Overall trending (expanded) */}
-        <section className="mb-10">
-          <SectionHeader title="Trending Now" className="[&>h2]:text-white" />
 
           {/* If overall is empty but category below has items, show a compact notice bar.
               Otherwise keep the full empty card with actions. */}

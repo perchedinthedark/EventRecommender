@@ -1,7 +1,7 @@
 // client/src/App.tsx
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom"; // ⟵ added Link
-import { api, EventDto, TrendingCategoryBlock } from "@/lib/api";
+import { useNavigate, Link } from "react-router-dom";
+import { api, EventDto, TrendingCategoryBlock, authEvents } from "@/lib/api";
 import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
 import EmptyState from "@/components/EmptyState";
@@ -42,7 +42,6 @@ function Grid({
 
 export default function App() {
   const nav = useNavigate();
-
   const [me, setMe] = useState<{
     id: string;
     userName?: string;
@@ -52,36 +51,59 @@ export default function App() {
 
   const [recs, setRecs] = useState<EventDto[] | null>(null);
   const [trendingOverall, setTrendingOverall] = useState<EventDto[] | null>(null);
-  const [personalBlocks, setPersonalBlocks] = useState<TrendingCategoryBlock[] | null>(
-    null
-  );
+  const [personalBlocks, setPersonalBlocks] = useState<TrendingCategoryBlock[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  async function fetchAll(currentUser: typeof me) {
+    setRecs(null);
+    setTrendingOverall(null);
+    setPersonalBlocks(null);
+    setError(null);
+
+    try {
+      const [r, t] = await Promise.all([
+        api.getRecs(6).catch(() => [] as EventDto[]),
+        api.getTrending(6, currentUser ? 2 : 0),
+      ]);
+      setRecs(r);
+      setTrendingOverall(t.overall);
+      const cats = currentUser ? (t.byCategory ?? []).slice(0, 2) : [];
+      setPersonalBlocks(cats);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load data.");
+    }
+  }
+
+  // initial load
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const user = await api.auth.me().catch(() => null);
       if (cancelled) return;
       setMe(user);
-
-      try {
-        const [r, t] = await Promise.all([
-          api.getRecs(6).catch(() => [] as EventDto[]),
-          api.getTrending(6, user ? 2 : 0),
-        ]);
-        if (cancelled) return;
-        setRecs(r);
-        setTrendingOverall(t.overall);
-        const cats = user ? (t.byCategory ?? []).slice(0, 2) : [];
-        setPersonalBlocks(cats);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Failed to load data.");
-      }
+      fetchAll(user);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // react to auth changes (login/logout/register)
+  useEffect(() => {
+  const off = authEvents.on(async (type) => {
+    if (type === "login" || type === "register" || type === "logout") {
+      const user = await api.auth.me().catch(() => null);
+      setMe(user);
+      await fetchAll(user);
+
+      if (type === "logout") {
+        nav("/", { replace: true });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+  });
+  return off;
+}, [nav]);
 
   const isLoading =
     recs === null || trendingOverall === null || personalBlocks === null;
@@ -90,9 +112,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen app-deep text-slate-100">
-      {/* NOTE: no top padding so the hero sits snug under the header */}
       <main className="max-w-[1200px] mx-auto px-4 pt-0 pb-12">
-        {/* HERO — rectangular, full bleed inside container */}
+        {/* HERO */}
         <section className="relative overflow-hidden border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_24px_80px_-30px_rgba(0,0,0,.65)] mb-8">
           <img
             className="absolute inset-0 h-full w-full object-cover"
@@ -112,7 +133,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* Search — dark glass variant */}
         <div className="mb-8">
           <SearchBand variant="dark" />
         </div>
@@ -140,16 +160,14 @@ export default function App() {
               <p className="text-sm text-white/80">
                 <Link
                   to="/login"
-                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300
-                             decoration-white/30 underline-offset-4 hover:opacity-90"
+                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 decoration-white/30 underline-offset-4 hover:opacity-90"
                 >
                   Log in
                 </Link>{" "}
                 or{" "}
                 <Link
                   to="/register"
-                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300
-                             decoration-white/30 underline-offset-4 hover:opacity-90"
+                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 decoration-white/30 underline-offset-4 hover:opacity-90"
                 >
                   create an account
                 </Link>{" "}
