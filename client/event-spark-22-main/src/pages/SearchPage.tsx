@@ -3,8 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { api, EventDto } from "@/lib/api";
 import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
-import EmptyState from "@/components/EmptyState";
 import SearchBand from "@/components/SearchBand";
+import Hero from "@/components/Hero";
 
 function Grid({
   items,
@@ -25,9 +25,18 @@ function Grid({
       </div>
     );
   }
+
   if (items.length === 0) {
-    return <EmptyState title="No results" text="Try a broader or different query." />;
+    return (
+      <div className="card-surface rounded-2xl border border-white/12 p-6 text-center">
+        <h3 className="text-lg font-semibold mb-1">No matches yet</h3>
+        <p className="text-sm text-white/80">
+          Try names, venues, neighborhoods, dates — or just a vibe.
+        </p>
+      </div>
+    );
   }
+
   return (
     <div
       className="grid gap-6"
@@ -72,10 +81,21 @@ export default function SearchPage() {
 
   return (
     <div className="min-h-screen text-white bg-[radial-gradient(1200px_600px_at_50%_-200px,#0f172a_0%,#020617_60%)]">
-      <main className="max-w-[1200px] mx-auto px-4 pb-12 pt-6">
-        {/* Glassy search band (dark variant) with a bit of top spacing */}
-        <div className="searchband-dark mb-6">
-          <SearchBand defaultQuery={q} autoFocus />
+      {/* flush under header: no top padding */}
+      <main className="max-w-[1200px] mx-auto px-4 pt-0 pb-12">
+        {/* SEARCH PAGE HERO — rectangular, different copy & photo */}
+        <Hero
+          rectangular
+          title="Search once. Plan better."
+          subtitle="Artists, venues, dates, vibes — find exactly what you’re in the mood for."
+          imageUrl="https://www.outdoorguide.com/img/gallery/the-ultimate-beginners-guide-to-reading-a-map/intro-1702593568.jpg"  // phones-in-hand searching vibe
+ 
+          className="mb-8"
+        />
+
+        {/* Dark search band */}
+        <div className="mb-6">
+          <SearchBand defaultQuery={q} autoFocus variant="dark" />
         </div>
 
         {error && (

@@ -1,5 +1,6 @@
+// client/src/App.tsx
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // ⟵ added Link
 import { api, EventDto, TrendingCategoryBlock } from "@/lib/api";
 import EventCard from "@/components/EventCard";
 import SkeletonCard from "@/components/SkeletonCard";
@@ -137,7 +138,22 @@ export default function App() {
             <div className="card-surface rounded-2xl border border-white/12 p-6 text-center">
               <h3 className="text-lg font-semibold mb-1">Personalized picks await ✨</h3>
               <p className="text-sm text-white/80">
-                Log in or create an account to get recommendations tailored to you.
+                <Link
+                  to="/login"
+                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300
+                             decoration-white/30 underline-offset-4 hover:opacity-90"
+                >
+                  Log in
+                </Link>{" "}
+                or{" "}
+                <Link
+                  to="/register"
+                  className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300
+                             decoration-white/30 underline-offset-4 hover:opacity-90"
+                >
+                  create an account
+                </Link>{" "}
+                to get recommendations tailored to you.
               </p>
             </div>
           )}

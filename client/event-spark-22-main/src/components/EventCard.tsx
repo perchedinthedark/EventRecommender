@@ -69,9 +69,9 @@ export default function EventCard({ ev }: { ev: EventDto }) {
   return (
     <div
       className={cn(
-        "card-surface overflow-hidden rounded-[24px]",
+        "group card-surface overflow-hidden rounded-[24px]",
         // subtle outer ring + hover pop
-        "ring-1 ring-white/12 hover:ring-white/25 transition"
+        "ring-1 ring-white/12 hover:ring-white/25 transition will-change-transform hover:-translate-y-[1px]"
       )}
     >
       {/* Banner */}
@@ -80,12 +80,15 @@ export default function EventCard({ ev }: { ev: EventDto }) {
           <img
             src={ev.imageUrl}
             alt={ev.title}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             loading="lazy"
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-b from-blue-500/60 to-indigo-500/60" />
         )}
+
+        {/* Legibility gradient */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
 
         {/* Category chip – higher contrast on dark images */}
         {!!ev.category && (
@@ -149,11 +152,16 @@ export default function EventCard({ ev }: { ev: EventDto }) {
               <span className="truncate text-xs text-white/70">{friendsLabel}</span>
             )}
           </div>
+
+          {/* Brand gradient "Details" link with gentle chevron nudge */}
           <Link
             to={`/event/${ev.id}`}
-            className="text-orange-300 hover:text-orange-200 text-sm"
+            className="inline-flex items-center gap-1 text-sm text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 decoration-white/30 underline-offset-4 hover:opacity-90"
           >
-            Details »
+            Details
+            <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+              »
+            </span>
           </Link>
         </div>
       </div>

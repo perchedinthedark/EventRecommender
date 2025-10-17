@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { SectionHeader } from "@/components/SectionHeader";
 import { cn } from "@/lib/utils";
+import Hero from "@/components/Hero";
 
 type UserLite = { id: string; userName?: string; displayName?: string; email?: string };
 
@@ -111,29 +111,38 @@ export default function PeoplePage() {
   }
 
   return (
-    <div className="min-h-screen page-surface text-[hsl(var(--foreground))]">
-      <main className="mx-auto max-w-[1100px] px-4 py-8">
-        <SectionHeader title="People" className="mb-6" />
+    <div className="min-h-screen app-deep text-slate-100">
+      <main className="mx-auto max-w-[1200px] px-4 pt-0 pb-12">
+        {/* Rectangular hero, flush under header */}
+        <Hero
+          rectangular
+          title="Find your crowd"
+          subtitle="Follow friends, meet new people, and swap picks for what's next."
+          imageUrl="https://static.vecteezy.com/system/resources/thumbnails/003/390/100/small_2x/silhouettes-of-a-group-of-people-on-the-rooftop-during-sunset-free-video.jpg"
+          className="mb-8"
+        />
 
         {!!error && (
-          <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-200">
             {error}
           </div>
         )}
 
-        {/* Search */}
-        <div className="mb-6 flex items-center gap-3">
-          <input
-            className="flex-1 rounded-xl bg-white/[.04] border border-white/12 px-4 py-2 text-slate-100 placeholder-slate-400
-                       focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400/40"
-            placeholder="Search people"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
-          />
-          <button onClick={search} className="pill-button disabled:opacity-60" disabled={searching}>
-            {searching ? "Searching…" : "Search"}
-          </button>
+        {/* Search band */}
+        <div className="mb-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 p-4">
+          <div className="flex items-center gap-3">
+            <input
+              className="flex-1 rounded-xl bg-white/[.06] border border-white/12 px-4 py-2 text-slate-100 placeholder-slate-400
+                         focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400/40"
+              placeholder="Search people"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && search()}
+            />
+            <button onClick={search} className="pill-button disabled:opacity-60" disabled={searching}>
+              {searching ? "Searching…" : "Search"}
+            </button>
+          </div>
         </div>
 
         {/* Following / Followers */}
@@ -167,7 +176,7 @@ export default function PeoplePage() {
             </ul>
           </section>
 
-          <section className="card-surface rounded-2xl border border-white/12 p-5">
+            <section className="card-surface rounded-2xl border border-white/12 p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-slate-100">Followers</h2>
               <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-slate-200 border border-white/15">
