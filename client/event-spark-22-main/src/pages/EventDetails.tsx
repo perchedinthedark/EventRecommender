@@ -121,9 +121,10 @@ export default function EventDetails() {
 
       <article
         className="
-          overflow-hidden rounded-3xl bg-white/5 backdrop-blur-md
-          ring-1 ring-white/10 hover:ring-white/20 transition
-          shadow-[0_24px_80px_-30px_rgba(0,0,0,.65)]
+          overflow-hidden rounded-3xl
+          bg-white/10 backdrop-blur-md
+          ring-1 ring-white/15 hover:ring-white/25 transition
+          shadow-[0_24px_80px_-30px_rgba(0,0,0,.55)]
         "
       >
         {/* Banner */}
@@ -138,20 +139,19 @@ export default function EventDetails() {
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/40 via-sky-500/40 to-purple-500/40" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/60" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/30 to-black/65" />
 
           {/* Category chip */}
           {ev.category && (
-            <span className="absolute top-4 left-4 inline-flex items-center rounded-full bg-black/45 text-white/95 border border-white/20 px-3 py-1 text-sm backdrop-blur">
+            <span className="absolute top-4 left-4 inline-flex items-center rounded-full bg-black/35 text-white/95 border border-white/25 px-3 py-1 text-sm backdrop-blur">
               {ev.category}
             </span>
           )}
 
-          {/* Average rating */}
+          {/* Average rating — stars only (no duplicate number) */}
           {typeof ev.avgRating === "number" && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full bg-black/45 border border-white/20 px-3 py-1 backdrop-blur">
+            <div className="absolute top-4 right-4 rounded-full bg-black/35 border border-white/25 px-3 py-1 backdrop-blur">
               <RatingStars rating={ev.avgRating} size="sm" />
-              <span className="text-xs text-white/90">{ev.avgRating.toFixed(1)}</span>
             </div>
           )}
         </header>
@@ -165,8 +165,8 @@ export default function EventDetails() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={copyLink}
-                className="inline-flex items-center gap-1 rounded-lg bg-white/7 px-2.5 py-1.5
-                           text-xs text-white/90 border border-white/10 hover:bg-white/10"
+                className="inline-flex items-center gap-1 rounded-lg bg-white/12 px-2.5 py-1.5
+                           text-xs text-white/90 border border-white/15 hover:bg-white/16"
                 title="Copy link"
               >
                 <LinkIcon className="h-3.5 w-3.5" />
@@ -175,8 +175,8 @@ export default function EventDetails() {
               {showShare && (
                 <button
                   onClick={shareNative}
-                  className="inline-flex items-center gap-1 rounded-lg bg-white/7 px-2.5 py-1.5
-                             text-xs text-white/90 border border-white/10 hover:bg-white/10"
+                  className="inline-flex items-center gap-1 rounded-lg bg-white/12 px-2.5 py-1.5
+                             text-xs text-white/90 border border-white/15 hover:bg-white/16"
                   title="Share"
                 >
                   <Share2 className="h-3.5 w-3.5" />
@@ -188,20 +188,20 @@ export default function EventDetails() {
 
           {/* Meta */}
           <ul className="mt-3 mb-6 flex flex-wrap items-center gap-3 text-sm">
-            <li className="inline-flex items-center gap-2 rounded-full bg-white/7 border border-white/10 px-3 py-1.5">
+            <li className="inline-flex items-center gap-2 rounded-full bg-white/12 border border-white/15 px-3 py-1.5">
               <Calendar className="h-4 w-4 text-slate-300" />
               <time className="leading-6" dateTime={new Date(ev.dateTime).toISOString()}>
                 {fmtDate(ev.dateTime)}
               </time>
             </li>
             {!!ev.location && (
-              <li className="inline-flex items-center gap-2 rounded-full bg-white/7 border border-white/10 px-3 py-1.5">
+              <li className="inline-flex items-center gap-2 rounded-full bg-white/12 border border-white/15 px-3 py-1.5">
                 <MapPin className="h-4 w-4 text-slate-300" />
                 <span className="leading-6">{ev.location}</span>
               </li>
             )}
             {!!ev.organizer && (
-              <li className="inline-flex items-center gap-2 rounded-full bg-white/7 border border-white/10 px-3 py-1.5">
+              <li className="inline-flex items-center gap-2 rounded-full bg-white/12 border border-white/15 px-3 py-1.5">
                 <span className="text-slate-300">by</span>
                 <span className="leading-6">{ev.organizer}</span>
               </li>
@@ -212,14 +212,14 @@ export default function EventDetails() {
           {!!ev.description && (
             <section className="mb-6">
               <h2 className="text-lg font-semibold mb-2">About</h2>
-              <p className="leading-7 text-slate-200">{ev.description}</p>
+              <p className="leading-7 text-slate-100/95">{ev.description}</p>
             </section>
           )}
 
           {/* Actions */}
           <section
             className={[
-              "mt-6 rounded-2xl border border-white/10 bg-white/6 p-4",
+              "mt-6 rounded-2xl border border-white/15 bg-white/12 p-4",
               busy || ratingBusy ? "opacity-70 pointer-events-none" : "",
             ].join(" ")}
           >
